@@ -1,0 +1,33 @@
+---
+description: Logging rules for Cursor agents
+alwaysApply: true
+---
+
+# Logging
+
+The plugin must include logging from the initial development phases.
+
+Separate:
+
+* developer logs
+* user logs
+
+Rules:
+
+* do not use `print()` in distributable plugin code
+* use logging adapters or QGIS messages instead
+* user logs must be understandable and translatable to English and Spanish
+* developer logs may contain technical diagnostics
+* domain code must not depend on QGIS logging APIs
+* isolate logging implementations in `infrastructure/logging/`
+
+Minimum flows to log:
+
+* plugin load/unload
+* IFC association
+* IFC viewer opening
+* IFC property reading
+* property mapping
+* GIS attribute writing
+* errors and cancellations
+

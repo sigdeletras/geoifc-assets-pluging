@@ -1,0 +1,26 @@
+---
+description: Agent workflow for this repository
+alwaysApply: true
+---
+
+# Agent Workflow
+
+Before editing:
+
+1. Read `AGENTS.md`.
+2. Read `docs/plan_desarrollo.md`.
+3. Read relevant `docs/` and `rules/` files.
+
+During work:
+
+* preserve user changes
+* do not refactor unrelated code
+* keep plugin package separate from repository support files
+* update documentation when project behavior or structure changes
+* keep UI text translatable
+
+Before finishing:
+
+* summarize changed files
+* report tests run or not run
+* report QGIS 3/4 or i18n risks

@@ -1,0 +1,32 @@
+---
+description: Architecture rules for Cursor agents
+alwaysApply: true
+---
+
+# Architecture
+
+Use hexagonal architecture.
+
+Inside `plugin/geoifc_assets/`:
+
+```text
+domain/
+application/
+infrastructure/
+presentation/
+webviewer/
+i18n/
+```
+
+Rules:
+
+* Domain code must not import QGIS, PyQt, IfcOpenShell, or viewer code.
+* Application code contains use cases and DTOs.
+* QGIS adapters belong in `infrastructure/qgis/`.
+* IFC adapters belong in `infrastructure/ifc/`.
+* QGIS 3/4 compatibility helpers belong in `infrastructure/qgis/compat/`.
+* UI code belongs in `presentation/`.
+* Web viewer assets belong in `webviewer/`.
+
+Keep changes small and scoped.
+

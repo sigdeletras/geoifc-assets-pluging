@@ -147,7 +147,7 @@ activemq-data/
 # SageMath parsed files
 *.sage.py
 
-# Environments
+# Local environments
 .env
 .envrc
 .venv
@@ -156,6 +156,8 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.venv/
+
 
 # Spyder project settings
 .spyderproject
@@ -216,3 +218,19 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+
+# QGIS plugin build artifacts
+*.zip
+plugin/geoifc_assets/resources.py
+plugin/geoifc_assets/i18n/*.qm
+
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Large local examples
+examples/sample_ifc/*.ifc

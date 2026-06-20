@@ -1,0 +1,29 @@
+---
+description: Language and translation rules
+alwaysApply: true
+---
+
+# Language and I18n
+
+Development language is English:
+
+* modules
+* classes
+* functions
+* variables
+* tests
+* logs
+* technical comments
+
+Multilingual policy applies only to:
+
+* plugin UI
+* `metadata.txt`
+* `README.md` and `README.es.md`
+
+Repository documentation is Spanish, except README files.
+
+All user-visible plugin UI text must be translatable to English and Spanish.
+
+Do not hardcode visible UI strings without passing through the translation layer.
+

@@ -1,0 +1,25 @@
+---
+description: QGIS 3 and QGIS 4 compatibility rules
+alwaysApply: true
+---
+
+# QGIS Compatibility
+
+The plugin must support QGIS 3 and QGIS 4.
+
+Rules:
+
+* import Qt through `qgis.PyQt`
+* do not import directly from `PyQt5` or `PyQt6`
+* use Qt5/Qt6-compatible enum forms
+* isolate version differences in `infrastructure/qgis/compat/`
+* avoid QGIS API calls from domain code
+* validate with QGIS 3 LTR and QGIS 4.x before release
+
+Expected compatible metadata:
+
+```ini
+qgisMinimumVersion=3.0
+qgisMaximumVersion=4.99
+```
+

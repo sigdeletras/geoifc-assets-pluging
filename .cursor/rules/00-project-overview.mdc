@@ -1,0 +1,37 @@
+---
+description: GeoIFC Assets project overview for Cursor agents
+alwaysApply: true
+---
+
+# GeoIFC Assets
+
+GeoIFC Assets is a QGIS plugin for connecting GIS features with IFC models.
+
+The MVP is:
+
+* associate a GIS feature with an IFC file
+* open the IFC in an embedded viewer
+* select IFC elements
+* inspect IFC properties
+* select one or more IFC properties
+* map them to GIS fields
+* write selected values into GIS feature attributes
+* log the main workflow with developer logs and user logs
+
+Out of scope for the MVP:
+
+* indicator engine
+* batch processing
+* PostGIS
+* IFC georeferencing
+* custom profiles
+* print-based diagnostics in plugin code
+
+Sector profiles are an evolution after the MVP.
+
+Source of truth:
+
+* `docs/plan_desarrollo.md`
+* `docs/ciclo_vida_desarrollo.md`
+* `docs/compatibilidad_qgis.md`
+* `rules/`
