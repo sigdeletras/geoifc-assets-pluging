@@ -163,8 +163,8 @@ La arquitectura debe incluir un puerto de logging para no acoplar el dominio a Q
 Ubicacion recomendada:
 
 ```text
-plugin/geoifc_assets/application/ports/logging_port.py
-plugin/geoifc_assets/infrastructure/logging/
+geoifcassets/application/ports/logging_port.py
+geoifcassets/infrastructure/logging/
 ```
 
 Reglas:
@@ -263,4 +263,3 @@ La gestion de logs se considera integrada en el MVP si:
 * el usuario recibe mensajes comprensibles
 * los logs no rompen la compatibilidad QGIS 3/4
 * los logs no acoplan el dominio a QGIS
-

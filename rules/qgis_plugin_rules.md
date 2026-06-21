@@ -5,13 +5,13 @@
 Solo esta carpeta debe empaquetarse como plugin:
 
 ```text
-plugin/geoifc_assets/
+geoifcassets/
 ```
 
 El ZIP final debe contener:
 
 ```text
-geoifc_assets/
+geoifcassets/
 ```
 
 No incluir en el ZIP:

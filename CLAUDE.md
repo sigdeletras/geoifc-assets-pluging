@@ -14,7 +14,7 @@ Key constraints:
 * Code is written in English.
 * Repository documentation is written in Spanish.
 * Plugin UI, `metadata.txt`, and README files must be English/Spanish.
-* The installable plugin is only `plugin/geoifc_assets/`.
+* The installable plugin is only `geoifcassets/`.
 * The MVP is manual IFC property selection and mapping to GIS fields.
 * QGIS 3 and QGIS 4 compatibility must be preserved.
 * Use `qgis.PyQt`, not direct `PyQt5` or `PyQt6` imports.

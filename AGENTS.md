@@ -65,7 +65,7 @@ All user-visible plugin UI text must be translatable to English and Spanish.
 The installable QGIS plugin lives only in:
 
 ```text
-plugin/geoifc_assets/
+geoifcassets/
 ```
 
 Do not place repository support files inside the installable plugin package.
@@ -85,12 +85,14 @@ The plugin package must not include:
 
 # 4. Architecture Rules
 
-Use a hexagonal architecture:
+Use a pragmatic modular architecture inspired by hexagonal architecture:
 
 ```text
 presentation -> application -> domain
 infrastructure -> application/domain through adapters
 ```
+
+Hexagonal architecture is a guide for isolating external dependencies, not a reason to create ceremonial layers.
 
 Main folders inside the plugin:
 
@@ -106,12 +108,13 @@ i18n/
 Rules:
 
 * Domain code must not import QGIS, PyQt, IfcOpenShell, or viewer code.
-* Application use cases coordinate domain services and ports.
+* Application use cases coordinate meaningful operations when they add value.
 * QGIS-specific code belongs in `infrastructure/qgis/`.
 * IFC-specific code belongs in `infrastructure/ifc/`.
 * QGIS 3/4 compatibility helpers belong in `infrastructure/qgis/compat/`.
 * UI code belongs in `presentation/`.
 * Embedded viewer assets belong in `webviewer/`.
+* Create ports/use cases only when they isolate dependencies, contain meaningful logic, or improve testability.
 
 ---
 
@@ -147,6 +150,18 @@ Target IFC versions for documentation and tests:
 * IFC2x3 TC1
 * IFC4 ADD2 TC1
 * IFC4.3 ADD2 / IFC 4.3.2.0
+
+IFC-BIM reference documentation lives in:
+
+```text
+docs/references/ifc/
+```
+
+IFC test fixtures live in:
+
+```text
+tests/fixtures/ifc/
+```
 
 Agents must not assume a property exists in every IFC version.
 

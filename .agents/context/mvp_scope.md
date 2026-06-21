@@ -16,6 +16,7 @@
 * English/Spanish UI
 * README in English and Spanish
 * packaging script
+* IFC-BIM references in `docs/references/ifc/`
 
 ## Excluded
 
@@ -26,6 +27,7 @@
 * custom profiles
 * sector profile automation
 * print-based plugin diagnostics
+* reference documents outside `docs/`
 
 ## Evolution
 

@@ -155,7 +155,8 @@ Regla general:
 * La integracion con QGIS debe quedar en `infrastructure/qgis`.
 * La lectura IFC debe quedar en `infrastructure/ifc`.
 * La UI debe quedar en `presentation`.
-* Los casos de uso deben quedar en `application/use_cases`.
+* Los casos de uso deben quedar en `application/use_cases` cuando coordinen una operacion significativa o aporten testabilidad.
+* No se deben crear puertos, DTOs o casos de uso si solo anaden ceremonia sin logica real.
 
 ---
 
@@ -310,7 +311,7 @@ Para una funcionalidad MVP, ademas debe existir validacion manual en QGIS 3 LTR 
 El empaquetado debe generar un ZIP con la carpeta:
 
 ```text
-geoifc_assets/
+geoifcassets/
 ```
 
 El paquete debe incluir solo lo necesario para ejecutar el complemento en QGIS:
@@ -407,6 +408,6 @@ Para el MVP, el ciclo de vida se aplicara a estas capacidades:
 * usar la interfaz en ingles y espanol
 * ejecutar el flujo en QGIS 3 y QGIS 4
 * registrar logs de desarrollo y usuario
-* empaquetar el complemento desde la carpeta `plugin/geoifc_assets/`
+* empaquetar el complemento desde la carpeta `geoifcassets/`
 
 Los perfiles sectoriales quedan fuera del MVP y se gestionaran como funcionalidades evolutivas.

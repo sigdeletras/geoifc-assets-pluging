@@ -5,7 +5,9 @@ alwaysApply: true
 
 # Architecture
 
-Use hexagonal architecture.
+Use pragmatic modular architecture inspired by hexagonal architecture.
+
+Hexagonal architecture is a guide for isolating QGIS, Qt, IfcOpenShell, logging, storage, and viewer dependencies. It is not a reason to create ceremonial layers.
 
 Inside `plugin/geoifc_assets/`:
 
@@ -28,5 +30,6 @@ Rules:
 * UI code belongs in `presentation/`.
 * Web viewer assets belong in `webviewer/`.
 
-Keep changes small and scoped.
+Create ports/use cases only when they isolate dependencies, contain meaningful logic, or improve testability.
 
+Keep changes small and scoped.

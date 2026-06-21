@@ -1,6 +1,6 @@
 # GeoIFC Assets
 
-## Plan de Desarrollo y Arquitectura Tecnica (v3.9)
+## Plan de Desarrollo y Arquitectura Tecnica (v3.12)
 
 ---
 
@@ -26,7 +26,9 @@ El sistema no importa geometria IFC ni sustituye herramientas BIM. Actua como **
 
 ## 1.1 Arquitectura
 
-Aplicar arquitectura hexagonal (Puertos y Adaptadores).
+Aplicar una arquitectura modular pragmatica inspirada en arquitectura hexagonal.
+
+La arquitectura hexagonal actua como orientacion para aislar QGIS, Qt, IfcOpenShell, logging, storage y visor web, pero no debe aplicarse como dogma ni generar capas ceremoniales sin valor.
 
 ```text id="arch_hex"
 presentation
@@ -61,7 +63,7 @@ infrastructure
 * DRY
 * KISS
 * Dependency Injection
-* Arquitectura orientada a casos de uso
+* Arquitectura orientada a casos de uso cuando aporten valor real
 * Diseno guiado por dominio ligero
 * Tipado estatico con mypy
 * Testing desde el inicio
@@ -598,7 +600,7 @@ Como administrador del complemento, quiero una estructura de repositorio clara y
 
 Criterios de aceptacion:
 
-* La carpeta instalable es `plugin/geoifc_assets/`.
+* La carpeta instalable es `geoifcassets/`.
 * El ZIP de distribucion no incluye `docs/`, `tests/`, `rules/`, `scripts/` ni `.github/`.
 * Existen instrucciones iniciales de instalacion.
 * Existen scripts iniciales para validar y empaquetar.
@@ -760,48 +762,47 @@ El repositorio debe diferenciar claramente la carpeta instalable del plugin QGIS
 
 ```text id="repo_structure"
 GeoIFC_Assets/
-    plugin/
-        geoifc_assets/
-            metadata.txt
-            __init__.py
-            main.py
-            resources.qrc
-            resources.py
-            icon.png
+    geoifcassets/
+        metadata.txt
+        __init__.py
+        main.py
+        resources.qrc
+        resources.py
+        icon.png
 
-            domain/
-                entities/
-                services/
-                repositories/
-                value_objects/
+        domain/
+            entities/
+            services/
+            repositories/
+            value_objects/
 
-            application/
-                use_cases/
-                dto/
+        application/
+            use_cases/
+            dto/
 
-            infrastructure/
-                qgis/
-                    compat/
-                ifc/
-                logging/
-                storage/
-                webviewer/
-
-            presentation/
-                dialogs/
-                docks/
-                controllers/
-
+        infrastructure/
+            qgis/
+                compat/
+            ifc/
+            logging/
+            storage/
             webviewer/
-                index.html
-                assets/
-                js/
 
-            i18n/
-                geoifc_assets_en.ts
-                geoifc_assets_es.ts
-                geoifc_assets_en.qm
-                geoifc_assets_es.qm
+        presentation/
+            dialogs/
+            docks/
+            controllers/
+
+        webviewer/
+            index.html
+            assets/
+            js/
+
+        i18n/
+            geoifcassets_en.ts
+            geoifcassets_es.ts
+            geoifcassets_en.qm
+            geoifcassets_es.qm
 
     docs/
         plan_desarrollo.md
@@ -811,6 +812,19 @@ GeoIFC_Assets/
         ciclo_vida_desarrollo.md
         compatibilidad_qgis.md
         gestion_logs.md
+        references/
+            ifc/
+                README.md
+                versions.md
+                sources.md
+                properties_and_quantities.md
+                ifc_gis_mapping.md
+                IFC2X3_TC1/
+                    README.md
+                IFC4_ADD2_TC1/
+                    README.md
+                IFC4X3_ADD2/
+                    README.md
         decisiones/
 
     tests/
@@ -818,6 +832,7 @@ GeoIFC_Assets/
         integration/
         qgis/
         fixtures/
+            ifc/
 
     rules/
         agentic_development_rules.md
@@ -878,7 +893,7 @@ GeoIFC_Assets/
 
 ## 11.1 Carpeta del plugin QGIS
 
-La carpeta `plugin/geoifc_assets/` es la unica carpeta que debe instalarse o empaquetarse como complemento QGIS.
+La carpeta `geoifcassets/` es la unica carpeta que debe instalarse o empaquetarse como complemento QGIS.
 
 Debe contener:
 
@@ -903,9 +918,11 @@ No debe contener:
 
 ## 11.2 Carpetas de soporte del repositorio
 
-La carpeta `docs/` contiene documentacion de producto, arquitectura y uso en espanol. No es necesario mantener una copia completa de la documentacion en ingles.
+La carpeta `docs/` contiene documentacion de producto, arquitectura, uso y referencias tecnicas en espanol. No es necesario mantener una copia completa de la documentacion en ingles.
 
-La carpeta `tests/` contiene pruebas unitarias, integracion y fixtures. Las pruebas de QGIS deben quedar separadas porque requieren entorno QGIS.
+Los documentos de referencia del proyecto deben vivir dentro de `docs/references/`. La base documental IFC-BIM versionada debe ubicarse en `docs/references/ifc/`.
+
+La carpeta `tests/` contiene pruebas unitarias, integracion y fixtures. Las pruebas de QGIS deben quedar separadas porque requieren entorno QGIS. Los fixtures IFC usados por tests deben estar en `tests/fixtures/ifc/`; la documentacion de referencia IFC debe estar en `docs/references/ifc/`.
 
 La carpeta `rules/` contiene reglas internas para mantener consistencia durante el desarrollo: estilo de codigo, arquitectura, estructura del plugin, convenciones de mapeo IFC-GIS, internacionalizacion, compatibilidad QGIS 3/4, gestion de logs y trabajo con agentes.
 
@@ -928,7 +945,7 @@ La carpeta `.github/` contiene automatizaciones de GitHub, como lint, tests y em
 El paquete distribuible del complemento debe incluir solo:
 
 ```text id="plugin_package"
-geoifc_assets/
+geoifcassets/
     metadata.txt
     __init__.py
     main.py

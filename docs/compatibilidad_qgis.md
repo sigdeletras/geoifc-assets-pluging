@@ -104,7 +104,7 @@ QgsMapLayer.VectorLayer
 El codigo dependiente de diferencias QGIS 3/4 debe aislarse en:
 
 ```text
-plugin/geoifc_assets/infrastructure/qgis/compat/
+geoifcassets/infrastructure/qgis/compat/
 ```
 
 Esta capa debe incluir:

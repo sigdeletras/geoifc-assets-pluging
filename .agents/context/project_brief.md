@@ -28,6 +28,11 @@ Compatibility:
 * QGIS 3 LTR
 * QGIS 4.x
 
+IFC references:
+
+* `docs/references/ifc/`
+* `tests/fixtures/ifc/` for test data only
+
 Logging:
 
 * avoid `print()` in plugin code
