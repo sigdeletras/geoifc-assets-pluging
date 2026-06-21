@@ -12,7 +12,7 @@ Rules:
 * import Qt through `qgis.PyQt`
 * do not import directly from `PyQt5` or `PyQt6`
 * use Qt5/Qt6-compatible enum forms
-* isolate version differences in `infrastructure/qgis/compat/`
+* isolate version differences in `adapters/qgis/`
 * avoid QGIS API calls from domain code
 * validate with QGIS 3 LTR and QGIS 4.x before release
 
@@ -22,4 +22,3 @@ Expected compatible metadata:
 qgisMinimumVersion=3.0
 qgisMaximumVersion=4.99
 ```
-

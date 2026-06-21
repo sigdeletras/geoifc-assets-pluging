@@ -8,10 +8,10 @@
 
 ## Architecture
 
-* [ ] Domain has no QGIS/PyQt/IfcOpenShell imports.
-* [ ] QGIS code stays in infrastructure or presentation.
-* [ ] IFC code stays in infrastructure/ifc.
-* [ ] QGIS 3/4 differences are isolated in compat layer.
+* [ ] Pure logic in `core/` has no QGIS/PyQt/IfcOpenShell imports.
+* [ ] QGIS code stays in `adapters/qgis/`.
+* [ ] IFC code stays in `adapters/ifc/`.
+* [ ] QGIS 3/4 differences are isolated in QGIS adapters.
 
 ## I18n
 

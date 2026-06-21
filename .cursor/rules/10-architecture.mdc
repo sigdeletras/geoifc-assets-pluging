@@ -5,31 +5,32 @@ alwaysApply: true
 
 # Architecture
 
-Use pragmatic modular architecture inspired by hexagonal architecture.
+Use lightweight hexagonal architecture.
 
-Hexagonal architecture is a guide for isolating QGIS, Qt, IfcOpenShell, logging, storage, and viewer dependencies. It is not a reason to create ceremonial layers.
-
-Inside `plugin/geoifc_assets/`:
+The architecture is:
 
 ```text
-domain/
-application/
-infrastructure/
-presentation/
+pure core + QGIS/IFC adapters + cross-cutting services
+```
+
+Inside `geoifcassets/`:
+
+```text
+core/
+adapters/
+services/
 webviewer/
 i18n/
 ```
 
 Rules:
 
-* Domain code must not import QGIS, PyQt, IfcOpenShell, or viewer code.
-* Application code contains use cases and DTOs.
-* QGIS adapters belong in `infrastructure/qgis/`.
-* IFC adapters belong in `infrastructure/ifc/`.
-* QGIS 3/4 compatibility helpers belong in `infrastructure/qgis/compat/`.
-* UI code belongs in `presentation/`.
+* Core code must not import QGIS, PyQt, IfcOpenShell, or viewer code.
+* QGIS adapters belong in `adapters/qgis/`.
+* IFC adapters belong in `adapters/ifc/`.
+* Logging belongs in `services/`.
 * Web viewer assets belong in `webviewer/`.
 
-Create ports/use cases only when they isolate dependencies, contain meaningful logic, or improve testability.
+Do not create `domain/`, `application/`, `infrastructure/`, `presentation/`, `ports/`, `dto/`, or `use_cases/` unless the project clearly outgrows the lightweight structure.
 
 Keep changes small and scoped.

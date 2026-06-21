@@ -572,20 +572,18 @@ La estructura actual puede mantenerse:
 
 ```text
 geoifcassets/
-    domain/
-    application/
-    infrastructure/
-    presentation/
+    core/
+    adapters/
+    services/
     webviewer/
     i18n/
 ```
 
 Pero se interpreta de forma ligera:
 
-* `domain/`: solo para conceptos y reglas puras con valor real.
-* `application/`: casos de uso cuando coordinan una operacion significativa.
-* `infrastructure/`: adaptadores QGIS, IFC, logging, storage y compatibilidad.
-* `presentation/`: UI, docks, dialogs y controllers.
+* `core/`: conceptos y reglas puras con valor real.
+* `adapters/`: adaptadores QGIS e IFC.
+* `services/`: servicios transversales como logging.
 
 No es obligatorio crear `port + use case + DTO` para cada interaccion pequena.
 
@@ -593,22 +591,21 @@ No es obligatorio crear `port + use case + DTO` para cada interaccion pequena.
 
 ### Cambios QGIS
 
-Mantenerlos fuera de `domain/`.
+Mantenerlos fuera de `core/`.
 
 Pueden vivir en:
 
-* `infrastructure/qgis/`
-* `presentation/`
+* `adapters/qgis/`
 
 Crear puerto solo si la funcionalidad debe probarse sin QGIS o si hay una regla de aplicacion no trivial.
 
 ### Cambios IFC
 
-Mantener IfcOpenShell fuera de `domain/`.
+Mantener IfcOpenShell fuera de `core/`.
 
-La lectura cruda puede vivir en `infrastructure/ifc/`.
+La lectura cruda puede vivir en `adapters/ifc/`.
 
-La normalizacion o mapeo IFC-GIS puede vivir en `application/` o `domain/` si contiene logica pura.
+La normalizacion o mapeo IFC-GIS puede vivir en `core/` si contiene logica pura.
 
 ### Cambios UI
 
@@ -653,4 +650,3 @@ El objetivo es que el complemento sea:
 * testeable donde aporte valor
 * compatible con QGIS 3/4
 * preparado para evolucionar hacia visor IFC, mapeo IFC-GIS y perfiles sectoriales
-

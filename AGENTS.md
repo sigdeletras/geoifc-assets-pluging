@@ -85,36 +85,33 @@ The plugin package must not include:
 
 # 4. Architecture Rules
 
-Use a pragmatic modular architecture inspired by hexagonal architecture:
+Use lightweight hexagonal architecture:
 
 ```text
-presentation -> application -> domain
-infrastructure -> application/domain through adapters
+pure core + QGIS/IFC adapters + cross-cutting services
 ```
 
-Hexagonal architecture is a guide for isolating external dependencies, not a reason to create ceremonial layers.
+The goal is to keep QGIS, Qt, IfcOpenShell, logging, and viewer dependencies outside the pure core without creating ceremonial layers.
 
 Main folders inside the plugin:
 
 ```text
-domain/
-application/
-infrastructure/
-presentation/
+core/
+adapters/
+services/
 webviewer/
 i18n/
 ```
 
 Rules:
 
-* Domain code must not import QGIS, PyQt, IfcOpenShell, or viewer code.
-* Application use cases coordinate meaningful operations when they add value.
-* QGIS-specific code belongs in `infrastructure/qgis/`.
-* IFC-specific code belongs in `infrastructure/ifc/`.
-* QGIS 3/4 compatibility helpers belong in `infrastructure/qgis/compat/`.
-* UI code belongs in `presentation/`.
+* Core code must not import QGIS, PyQt, IfcOpenShell, or viewer code.
+* QGIS-specific code belongs in `adapters/qgis/`.
+* IFC-specific code belongs in `adapters/ifc/`.
+* QGIS 3/4 compatibility helpers belong in `adapters/qgis/`.
+* Cross-cutting logging code belongs in `services/`.
 * Embedded viewer assets belong in `webviewer/`.
-* Create ports/use cases only when they isolate dependencies, contain meaningful logic, or improve testability.
+* Do not create `domain/`, `application/`, `infrastructure/`, `presentation/`, `ports/`, `dto/`, or `use_cases/` at the beginning.
 
 ---
 
@@ -127,7 +124,7 @@ Rules:
 * import Qt through `qgis.PyQt`
 * do not import directly from `PyQt5` or `PyQt6`
 * use Qt5/Qt6-compatible enum forms
-* isolate QGIS 3/4 differences in `infrastructure/qgis/compat/`
+* isolate QGIS 3/4 differences in `adapters/qgis/`
 * validate against one QGIS 3 LTR version and one QGIS 4.x version before release
 
 Expected metadata for one package compatible with QGIS 3 and 4:

@@ -42,7 +42,7 @@ QgsMapLayer.LayerType.VectorLayer
 Las diferencias QGIS 3/4 deben aislarse en:
 
 ```text
-geoifcassets/infrastructure/qgis/compat/
+geoifcassets/adapters/qgis/
 ```
 
 ---

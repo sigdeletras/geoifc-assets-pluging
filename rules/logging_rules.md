@@ -53,8 +53,7 @@ El dominio no debe depender de QGIS ni de implementaciones concretas de logging.
 Ubicacion recomendada:
 
 ```text
-geoifcassets/application/ports/logging_port.py
-geoifcassets/infrastructure/logging/
+geoifcassets/services/logging.py
 ```
 
 ---

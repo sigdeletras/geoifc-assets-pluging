@@ -19,7 +19,7 @@ Rules:
 * user logs must be understandable and translatable to English and Spanish
 * developer logs may contain technical diagnostics
 * domain code must not depend on QGIS logging APIs
-* isolate logging implementations in `infrastructure/logging/`
+* isolate logging implementations in `services/`
 
 Minimum flows to log:
 
@@ -30,4 +30,3 @@ Minimum flows to log:
 * property mapping
 * GIS attribute writing
 * errors and cancellations
-

@@ -1,25 +1,28 @@
 # Reglas de Arquitectura
 
-## Arquitectura Modular Pragmatica
+## Arquitectura Hexagonal Ligera
 
-El complemento usa una arquitectura modular pragmatica inspirada en arquitectura hexagonal.
+El complemento usa una arquitectura hexagonal ligera.
 
-La arquitectura hexagonal se usa como orientacion para aislar dependencias externas, no como dogma ni como obligacion de crear capas ceremoniales.
+La idea base es:
+
+```text
+nucleo puro + adaptadores QGIS/IFC + servicios transversales
+```
 
 Capas principales:
 
 ```text
-presentation
-application
-domain
-infrastructure
+core
+adapters
+services
 ```
 
 ---
 
-## Domain
+## Core
 
-La capa `domain` contiene reglas puras.
+La carpeta `core/` contiene logica pura.
 
 No debe importar:
 
@@ -29,45 +32,32 @@ No debe importar:
 * visor web
 * sistema de archivos QGIS
 
----
-
-## Application
-
-La capa `application` contiene casos de uso y DTOs cuando aportan valor real.
-
-Casos de uso MVP:
-
-* `AssociateIfcToFeatureUseCase`
-* `OpenIfcViewerUseCase`
-* `ReadIfcPropertiesUseCase`
-* `SelectIfcPropertiesUseCase`
-* `MapIfcPropertiesToFieldsUseCase`
-* `UpdateFeatureAttributesUseCase`
-
-No es obligatorio crear un caso de uso para cada accion pequena de UI. Crear un caso de uso cuando coordine una operacion significativa, contenga logica funcional o facilite pruebas sin QGIS.
+Puede contener modelos, validaciones, reglas de mapeo IFC-GIS y errores propios.
 
 ---
 
-## Infrastructure
+## Adapters
 
-La capa `infrastructure` contiene adaptadores.
+La carpeta `adapters/` contiene integraciones externas.
 
 Subcarpetas:
 
-* `qgis/`
-* `qgis/compat/`
-* `ifc/`
-* `logging/`
-* `storage/`
-* `webviewer/`
+* `adapters/qgis/`
+* `adapters/ifc/`
+
+`adapters/qgis/` contiene plugin, dock, lectura/escritura QGIS, mensajes, i18n y compatibilidad QGIS 3/4.
+
+`adapters/ifc/` contiene lectura IFC y adaptacion de IfcOpenShell.
 
 ---
 
-## Presentation
+## Services
 
-La capa `presentation` contiene dialogs, docks y controllers.
+La carpeta `services/` contiene servicios transversales.
 
-La UI llama a casos de uso, no a servicios de infraestructura directamente salvo adaptadores muy acotados.
+Inicialmente:
+
+* logging
 
 ---
 
@@ -82,3 +72,5 @@ Crear una abstraccion solo si:
 * estabiliza una frontera que probablemente cambiara
 
 Evitar abstracciones que solo pasen datos de un sitio a otro sin logica.
+
+No crear de entrada `domain/`, `application/`, `infrastructure/`, `presentation/`, `ports/`, `dto/` ni `use_cases/`. Solo incorporarlas si el crecimiento del proyecto lo justifica claramente.

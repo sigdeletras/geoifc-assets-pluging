@@ -1,6 +1,6 @@
 # GeoIFC Assets
 
-## Plan de Desarrollo y Arquitectura Tecnica (v3.12)
+## Plan de Desarrollo y Arquitectura Tecnica (v3.15)
 
 ---
 
@@ -26,32 +26,31 @@ El sistema no importa geometria IFC ni sustituye herramientas BIM. Actua como **
 
 ## 1.1 Arquitectura
 
-Aplicar una arquitectura modular pragmatica inspirada en arquitectura hexagonal.
+Aplicar una arquitectura hexagonal ligera.
 
-La arquitectura hexagonal actua como orientacion para aislar QGIS, Qt, IfcOpenShell, logging, storage y visor web, pero no debe aplicarse como dogma ni generar capas ceremoniales sin valor.
+La arquitectura se basara en:
+
+```text
+nucleo puro + adaptadores QGIS/IFC + servicios transversales
+```
+
+El objetivo es conservar el aislamiento de QGIS, Qt, IfcOpenShell, logging y visor web sin crear una estructura pesada de `domain/application/infrastructure/presentation` desde el inicio.
 
 ```text id="arch_hex"
-presentation
-    dialogs
-    docks
-    controllers
+core
+    models
+    mapping
+    validation
 
-application
-    use_cases
-    dto
-
-domain
-    entities
-    services
-    repositories
-    value_objects
-
-infrastructure
+adapters
     qgis
     ifc
+
+services
     logging
-    storage
-    webviewer
+
+webviewer
+i18n
 ```
 
 ---
@@ -155,7 +154,7 @@ Reglas principales:
 * usar imports Qt desde `qgis.PyQt`
 * evitar imports directos desde `PyQt5` o `PyQt6`
 * usar enumeraciones compatibles con Qt5/Qt6
-* aislar diferencias de API en `infrastructure/qgis/compat/`
+* aislar diferencias de API en `adapters/qgis/`
 * validar el plugin en una version QGIS 3 LTR y una version QGIS 4.x antes de publicar
 * declarar correctamente `qgisMinimumVersion` y `qgisMaximumVersion` en `metadata.txt`
 * comprobar especialmente Qt WebEngine, QWebChannel, traducciones y escritura de atributos en ambas versiones
@@ -193,8 +192,7 @@ Cada entidad GIS representa un activo territorial vinculado a un modelo IFC:
 Feature GIS
     geometria
     atributos GIS
-    ifc_url / ifc_path
-    ifc_globalid opcional
+    ifc_path o ifc_url
 ```
 
 ---
@@ -207,17 +205,59 @@ Feature GIS
 
 El IFC es fuente de datos y visualizacion, no geometria GIS importada.
 
-En el MVP, la relacion puede resolverse de dos formas:
+En el MVP, la relacion se resuelve mediante un campo obligatorio de la capa GIS. El usuario selecciona la capa de trabajo, y esa capa debe contener al menos uno de estos campos:
 
-* El feature apunta a un IFC completo mediante `ifc_path` o `ifc_url`.
-* El feature apunta a un elemento concreto del IFC mediante `ifc_globalid`, cuando el usuario quiera persistir esa asociacion.
+* `ifc_path`: ruta local o relativa a un fichero IFC
+* `ifc_url`: URL a un fichero IFC
+
+No se aceptan otros nombres de campo como contrato del MVP. Esta restriccion simplifica el flujo del visor, las acciones de QGIS, la validacion y la documentacion para usuarios.
+
+No se persiste en el MVP una relacion granular con un elemento IFC mediante `GlobalId`. El `GlobalId` puede consultarse en el visor y ayudar a identificar el elemento seleccionado, pero no es un requisito estructural de la capa GIS.
 
 ---
 
-## 2.3 Seleccion manual de propiedades
+## 2.3 Configuracion de capa GIS de trabajo
+
+El complemento debe permitir seleccionar la capa GIS de trabajo desde la interfaz:
+
+* seleccionar una capa vectorial cargada en QGIS
+* validar que la capa contiene `ifc_path` o `ifc_url`
+* validar que al menos uno de esos campos tiene valor para el feature seleccionado
+* cuando existan ambos campos con valor, permitir confirmar cual se usara
+* informar si la capa no permite escritura cuando se quiera cargar datos
+
+Requisitos minimos:
+
+* capa vectorial
+* campo `ifc_path` o campo `ifc_url`
+* permisos de lectura de atributos
+* permisos de escritura solo para operaciones de carga de valores IFC a GIS
+
+La exigencia de `ifc_path` o `ifc_url` crea un contrato minimo de datos para el MVP. Las capas existentes que usen otros nombres deberan adaptarse antes de usar el complemento.
+
+---
+
+## 2.4 Acceso al visor IFC
+
+El visor IFC debe poder abrirse desde el panel del complemento tomando como entrada el feature GIS seleccionado y el valor de `ifc_path` o `ifc_url`.
+
+Como flujo recomendado de uso en QGIS, el complemento podra registrar una accion de capa, por ejemplo:
+
+```text
+Abrir IFC en GeoIFC Assets
+```
+
+La accion deberia poder usarse desde flujos habituales de QGIS como identificacion de elemento, formulario de atributos o menu contextual de feature, siempre que la capa este configurada.
+
+Si no existe feature seleccionado, la capa no contiene `ifc_path` ni `ifc_url`, o los campos estan vacios, el complemento debe mostrar un mensaje de usuario claro y registrar el evento en logs.
+
+---
+
+## 2.5 Seleccion manual de propiedades
 
 En la primera version, el usuario decide que informacion BIM quiere pasar a GIS:
 
+* Selecciona una capa GIS con `ifc_path` o `ifc_url`.
 * Selecciona un feature GIS.
 * Abre el IFC asociado en el visor embebido.
 * Selecciona un elemento IFC o consulta propiedades del modelo.
@@ -445,14 +485,16 @@ Flujos minimos a registrar:
 
 ```text id="flow_main"
 1. Usuario selecciona feature GIS
-2. Feature contiene ifc_path o ifc_url
-3. Sistema abre el IFC asociado en el visor embebido
-4. Usuario selecciona un elemento IFC o consulta propiedades del modelo
-5. Usuario marca una o varias propiedades IFC
-6. Usuario asigna cada propiedad a un campo GIS
-7. Sistema valida tipos y campos de destino
-8. Sistema escribe los valores en atributos GIS
-9. Sistema registra developer logs y user logs del flujo
+2. Sistema valida que la capa contiene `ifc_path` o `ifc_url`
+3. Sistema lee el valor IFC del feature seleccionado
+4. Sistema abre el IFC asociado en el visor embebido
+5. Usuario selecciona un elemento IFC o consulta propiedades del modelo
+6. Panel lateral muestra atributos, Property Sets y Quantity Sets
+7. Usuario marca una o varias propiedades IFC
+8. Usuario asigna cada propiedad a un campo GIS
+9. Sistema valida tipos, permisos y campos de destino
+10. Sistema escribe los valores en atributos GIS del feature seleccionado
+11. Sistema registra developer logs y user logs del flujo
 ```
 
 ---
@@ -472,29 +514,32 @@ Las historias de usuario definen el comportamiento esperado desde la perspectiva
 
 ## 7.2 Historias MVP
 
-### HU-01 Asociar un IFC a un activo GIS
+### HU-01 Validar la capa GIS de trabajo
 
-Como tecnico GIS, quiero asociar una ruta o URL IFC a un feature GIS, para vincular el activo territorial con su modelo BIM de referencia.
+Como tecnico GIS, quiero seleccionar una capa GIS que contenga `ifc_path` o `ifc_url`, para que el complemento pueda localizar el modelo IFC de cada feature de forma predecible.
 
 Criterios de aceptacion:
 
-* El usuario puede seleccionar un feature de una capa activa.
-* El usuario puede informar `ifc_path` o `ifc_url`.
-* El sistema valida que el recurso existe o que la URL tiene formato valido.
-* El sistema guarda la asociacion en atributos de la capa.
+* El usuario puede seleccionar una capa vectorial cargada en QGIS.
+* El sistema valida que existe `ifc_path` o `ifc_url`.
+* El sistema informa si el feature seleccionado no tiene valor IFC.
+* Si existen ambos campos con valor, el sistema permite confirmar cual se usara.
+* Si no existe ninguno de esos campos, el sistema informa del requisito de estructura de capa.
 * El sistema informa errores de forma comprensible.
 
 ---
 
-### HU-02 Abrir el IFC asociado en un visor embebido
+### HU-02 Abrir el IFC asociado en un visor embebido desde feature seleccionado
 
 Como gestor de activos, quiero abrir el IFC asociado al feature seleccionado dentro de QGIS, para revisar el modelo sin salir del entorno GIS.
 
 Criterios de aceptacion:
 
-* El sistema lee el IFC asociado al feature seleccionado.
+* El sistema lee el IFC desde `ifc_path` o `ifc_url`.
 * El visor se abre dentro de QGIS.
 * El usuario puede navegar el modelo 3D.
+* El visor puede abrirse desde el panel del complemento.
+* Si es viable en QGIS 3 y QGIS 4, el visor puede abrirse mediante una accion de capa.
 * Si el IFC no se puede abrir, el sistema muestra el motivo.
 * La interfaz del visor esta disponible en ingles y espanol.
 
@@ -537,6 +582,7 @@ Criterios de aceptacion:
 * El sistema muestra una lista de propiedades seleccionadas.
 * El usuario puede quitar propiedades antes de ejecutar la carga.
 * El sistema conserva el origen de cada propiedad seleccionada.
+* La seleccion se prepara para el feature GIS actualmente seleccionado.
 
 ---
 
@@ -573,11 +619,12 @@ Como gestor de activos, quiero cargar los valores seleccionados en el feature GI
 
 Criterios de aceptacion:
 
-* El sistema escribe los valores en los campos configurados.
+* El sistema escribe los valores en los campos configurados del feature seleccionado.
 * El sistema actualiza `ifc_status`.
 * El sistema actualiza `ifc_updated_at`.
 * Si hay error, el sistema registra el mensaje en `ifc_error`.
 * El usuario recibe confirmacion clara del resultado.
+* La carga sobre varias features o sobre una capa completa queda fuera del MVP.
 
 ---
 
@@ -645,14 +692,17 @@ Como tecnico GIS, quiero aplicar un perfil sectorial a un feature, para cargar p
 
 ## CU-1 Asociacion IFC
 
-* asignar ruta o URL IFC a un feature GIS
-* validar existencia y accesibilidad del recurso
+* seleccionar capa vectorial de trabajo
+* validar existencia de `ifc_path` o `ifc_url`
+* validar valor IFC del feature seleccionado
 
 ---
 
 ## CU-2 Visualizacion IFC
 
-* apertura desde capa GIS
+* apertura desde feature seleccionado
+* apertura desde panel del complemento
+* accion de capa como acceso recomendado cuando sea viable
 * visor embebido en QGIS
 * navegacion del modelo
 
@@ -686,7 +736,7 @@ Como tecnico GIS, quiero aplicar un perfil sectorial a un feature, para cargar p
 
 ## CU-6 Actualizacion de inventario GIS
 
-* escritura de resultados en campos de la capa
+* escritura de resultados en campos del feature seleccionado
 * registro de estado de procesamiento
 * notificacion de errores al usuario
 
@@ -734,13 +784,15 @@ No se incluyen calculos derivados ni reglas sectoriales en el MVP.
 ## 10.1 Campos minimos
 
 ```text id="layer_fields"
-ifc_path
-ifc_url
-ifc_globalid
+ifc_path o ifc_url
 ifc_status
 ifc_error
 ifc_updated_at
 ```
+
+El MVP obliga a que la capa contenga al menos uno de los campos `ifc_path` o `ifc_url`.
+
+`ifc_globalid` no es un campo minimo del MVP. Puede incorporarse como campo opcional o evolutivo si se decide persistir una relacion granular con elementos IFC.
 
 ---
 
@@ -770,28 +822,23 @@ GeoIFC_Assets/
         resources.py
         icon.png
 
-        domain/
-            entities/
-            services/
-            repositories/
-            value_objects/
+        core/
+            models.py
+            mapping.py
+            validation.py
 
-        application/
-            use_cases/
-            dto/
-
-        infrastructure/
+        adapters/
             qgis/
-                compat/
+                plugin.py
+                dock.py
+                feature_reader.py
+                messages.py
+                i18n.py
+                compat.py
             ifc/
-            logging/
-            storage/
-            webviewer/
 
-        presentation/
-            dialogs/
-            docks/
-            controllers/
+        services/
+            logging.py
 
         webviewer/
             index.html
@@ -951,10 +998,9 @@ geoifcassets/
     main.py
     resources.py
     icon.png
-    domain/
-    application/
-    infrastructure/
-    presentation/
+    core/
+    adapters/
+    services/
     webviewer/
     i18n/
 ```
@@ -963,20 +1009,22 @@ El ZIP final para QGIS no debe incluir `docs/`, `tests/`, `rules/`, `scripts/`, 
 
 ---
 
-# 12. Casos de uso de arquitectura
+# 12. Flujos Funcionales Candidatos
 
-* AssociateIfcToFeatureUseCase
-* OpenIfcViewerUseCase
-* ReadIfcPropertiesUseCase
-* SelectIfcPropertiesUseCase
-* MapIfcPropertiesToFieldsUseCase
-* UpdateFeatureAttributesUseCase
-* RecordWorkflowLogUseCase
+La arquitectura ligera no exige crear un caso de uso por cada flujo. Estos nombres sirven como referencia funcional, no como obligacion de estructura:
+
+* validar capa con `ifc_path` o `ifc_url`
+* abrir visor IFC
+* leer propiedades IFC
+* seleccionar propiedades IFC
+* mapear propiedades a campos GIS
+* actualizar atributos GIS
+* registrar logs de flujo
 
 Evolutivo:
 
-* CreateSectorProfileFromMappingUseCase
-* ApplySectorProfileUseCase
+* crear perfil sectorial desde mapeo
+* aplicar perfil sectorial
 
 ---
 
@@ -991,8 +1039,8 @@ Evolutivo:
 * documento inicial de gestion de logs
 * instrucciones iniciales para desarrollo agentico
 * estructura base del plugin QGIS
-* capa inicial `infrastructure/qgis/compat/`
-* capa inicial `infrastructure/logging/`
+* adaptadores iniciales `adapters/qgis/`
+* servicio inicial `services/logging.py`
 * carga del complemento
 * configuracion de dependencias
 * menu, toolbar y dock inicial
@@ -1011,7 +1059,9 @@ Evolutivo:
 ## Fase 2 - MVP con visor IFC y carga manual de propiedades
 
 * asociacion IFC <-> feature GIS
+* validacion de capa con `ifc_path` o `ifc_url`
 * apertura de IFC desde feature seleccionado
+* accion de capa para abrir el visor cuando sea viable en QGIS 3 y QGIS 4
 * visor embebido funcional
 * comprobacion controlada de Qt WebEngine en QGIS 3 y QGIS 4
 * consulta basica de propiedades
@@ -1019,6 +1069,7 @@ Evolutivo:
 * mapeo de propiedades a campos GIS
 * creacion controlada de campos
 * escritura de valores en atributos GIS
+* carga limitada al feature seleccionado
 * interfaz completa del MVP traducida a ingles y espanol
 * developer logs y user logs de los flujos principales
 
@@ -1055,13 +1106,13 @@ Evolutivo:
 
 GeoIFC Assets sera exitoso en su MVP si permite:
 
-1. Asociar un IFC a un feature GIS.
-2. Abrir el IFC asociado en un visor embebido dentro de QGIS.
+1. Seleccionar una capa GIS que contenga `ifc_path` o `ifc_url`.
+2. Abrir el IFC del feature seleccionado en un visor embebido dentro de QGIS.
 3. Seleccionar un elemento IFC y consultar sus propiedades.
 4. Elegir una o varias propiedades IFC.
 5. Mapear cada propiedad seleccionada a un campo GIS.
 6. Crear campos GIS cuando el usuario lo confirme.
-7. Escribir los valores seleccionados en atributos GIS.
+7. Escribir los valores seleccionados en atributos GIS del feature seleccionado.
 8. Usar la interfaz completa del MVP en ingles y espanol.
 9. Cargar y ejecutar el flujo MVP en QGIS 3 LTR y QGIS 4.x.
 10. Registrar developer logs y user logs de los flujos principales.

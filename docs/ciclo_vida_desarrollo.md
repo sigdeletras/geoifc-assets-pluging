@@ -140,7 +140,7 @@ En esta fase se decide donde vive el cambio dentro de la arquitectura.
 
 Debe identificar:
 
-* capa afectada: `presentation`, `application`, `domain` o `infrastructure`
+* capa afectada: `core`, `adapters`, `services`, `webviewer` o `i18n`
 * clases o servicios implicados
 * dependencias externas
 * impacto en traducciones
@@ -151,12 +151,11 @@ Debe identificar:
 
 Regla general:
 
-* La logica de negocio no debe depender directamente de QGIS.
-* La integracion con QGIS debe quedar en `infrastructure/qgis`.
-* La lectura IFC debe quedar en `infrastructure/ifc`.
-* La UI debe quedar en `presentation`.
-* Los casos de uso deben quedar en `application/use_cases` cuando coordinen una operacion significativa o aporten testabilidad.
-* No se deben crear puertos, DTOs o casos de uso si solo anaden ceremonia sin logica real.
+* La logica pura debe quedar en `core/`.
+* La integracion con QGIS debe quedar en `adapters/qgis/`.
+* La lectura IFC debe quedar en `adapters/ifc/`.
+* Los servicios transversales, como logging, deben quedar en `services/`.
+* No se deben crear `domain/`, `application/`, `infrastructure/`, `presentation/`, puertos, DTOs o casos de uso si solo anaden ceremonia sin logica real.
 
 ---
 

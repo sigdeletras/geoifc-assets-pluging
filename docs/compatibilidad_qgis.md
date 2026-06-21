@@ -104,7 +104,7 @@ QgsMapLayer.VectorLayer
 El codigo dependiente de diferencias QGIS 3/4 debe aislarse en:
 
 ```text
-geoifcassets/infrastructure/qgis/compat/
+geoifcassets/adapters/qgis/
 ```
 
 Esta capa debe incluir:
@@ -184,7 +184,7 @@ Antes de publicar una version:
 * `metadata.txt` revisado para QGIS 3/4.
 * Sin imports directos `PyQt5` o `PyQt6`.
 * Enumeraciones compatibles Qt5/Qt6.
-* Capa `infrastructure/qgis/compat/` revisada.
+* Adaptadores QGIS revisados.
 * Validacion manual en QGIS 3 LTR.
 * Validacion manual en QGIS 4.x.
 * Visor IFC probado en ambos entornos.

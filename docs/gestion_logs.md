@@ -158,22 +158,20 @@ Cuando se use `print()` fuera del plugin, debe estar justificado por el contexto
 
 # 6. Integracion tecnica
 
-La arquitectura debe incluir un puerto de logging para no acoplar el dominio a QGIS.
+La arquitectura debe incluir una gestion de logging que no acople `core/` a QGIS.
 
 Ubicacion recomendada:
 
 ```text
-geoifcassets/application/ports/logging_port.py
-geoifcassets/infrastructure/logging/
+geoifcassets/services/logging.py
 ```
 
 Reglas:
 
-* `domain` no debe depender de logging concreto.
-* `application` puede depender de un puerto de logging.
-* `infrastructure/logging` implementa adaptadores concretos.
-* `presentation` puede mostrar user logs.
-* `infrastructure/qgis` puede integrar logs con mecanismos de QGIS.
+* `core/` no debe depender de logging concreto.
+* `services/logging.py` contiene logging transversal.
+* `adapters/qgis/` puede integrar logs con mecanismos de QGIS.
+* Los user logs forman parte de la interfaz y deben ser traducibles.
 
 ---
 
