@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GeoIFC Assets Viewer</title>
+  </head>
+  <body>
+    <main class="viewer-shell">
+      <section class="viewport" aria-label="IFC viewer">
+        <canvas id="viewer-canvas"></canvas>
+        <div class="viewport-status" id="viewport-status">Waiting for IFC source</div>
+      </section>
+      <aside class="viewer-panel">
+        <div>
+          <span class="label">Source</span>
+          <strong id="source-name">No IFC selected</strong>
+        </div>
+        <div>
+          <span class="label">Status</span>
+          <strong id="source-status">Idle</strong>
+        </div>
+        <div>
+          <span class="label">Format</span>
+          <strong id="source-kind">-</strong>
+        </div>
+      </aside>
+    </main>
+    <script type="module" src="/src/viewer.ts"></script>
+  </body>
+</html>

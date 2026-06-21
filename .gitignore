@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# JavaScript dependencies
+node_modules/
+
 # C extensions
 *.so
 
@@ -49,7 +52,12 @@ coverage.xml
 *.py.cover
 .hypothesis/
 .pytest_cache/
+.pytest_tmp/
 cover/
+
+# SQLite / GeoPackage runtime sidecars
+*.gpkg-shm
+*.gpkg-wal
 
 # Translations
 *.mo

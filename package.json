@@ -1,0 +1,36 @@
+{
+  "name": "geoifc-assets-pluging",
+  "version": "1.0.0",
+  "description": "GeoIFC Assets is a QGIS plugin for connecting GIS assets with IFC models.",
+  "private": true,
+  "type": "module",
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": "tests"
+  },
+  "scripts": {
+    "build:webviewer": "vite build && node scripts/copy-webviewer-wasm.mjs",
+    "typecheck:webviewer": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sigdeletras/geoifc-assets-pluging.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "GPL-3.0-or-later",
+  "bugs": {
+    "url": "https://github.com/sigdeletras/geoifc-assets-pluging/issues"
+  },
+  "homepage": "https://github.com/sigdeletras/geoifc-assets-pluging#readme",
+  "devDependencies": {
+    "@types/three": "^0.184.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
+  },
+  "dependencies": {
+    "three": "^0.184.0",
+    "web-ifc": "^0.0.77"
+  }
+}
