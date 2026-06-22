@@ -35,6 +35,7 @@ class GeoIfcAssetsDock:
         on_layer_selected: Callable[[str], list[FeatureListItem]],
         on_feature_selected: Callable[[str, int], None],
         on_open_viewer: Callable[[], None],
+        viewer_widget: Any | None = None,
     ) -> None:
         from qgis.PyQt.QtWidgets import (
             QComboBox,
@@ -62,13 +63,15 @@ class GeoIfcAssetsDock:
         content = QWidget()
         layout = QVBoxLayout(content)
 
-        tabs = QTabWidget()
+        self._tabs = QTabWidget()
+        tabs = self._tabs
         layer_tab = QWidget()
         layer_layout = QVBoxLayout(layer_tab)
         properties_tab = QWidget()
         properties_layout = QVBoxLayout(properties_tab)
         viewer_tab = QWidget()
         viewer_layout = QVBoxLayout(viewer_tab)
+        viewer_layout.setContentsMargins(0, 0, 0, 0)
 
         self._layer_combo = QComboBox()
         self._layer_combo.currentIndexChanged.connect(self._select_layer_row)
@@ -109,13 +112,15 @@ class GeoIfcAssetsDock:
         self._user_log.setPlaceholderText(tr("GeoIfcAssets", "Workflow messages"))
         properties_layout.addWidget(self._user_log)
 
-        buttons_layout = QHBoxLayout()
         self._open_button = QPushButton(tr("GeoIfcAssets", "Open IFC viewer"))
         self._open_button.setEnabled(False)
         self._open_button.clicked.connect(on_open_viewer)
-        buttons_layout.addWidget(self._open_button)
-        viewer_layout.addLayout(buttons_layout)
-        viewer_layout.addStretch(1)
+        layer_layout.addWidget(self._open_button)
+
+        if viewer_widget is not None:
+            viewer_layout.addWidget(viewer_widget)
+        else:
+            viewer_layout.addStretch(1)
 
         tabs.addTab(layer_tab, tr("GeoIfcAssets", "Layer/Features"))
         tabs.addTab(properties_tab, tr("GeoIfcAssets", "Properties"))
@@ -127,6 +132,9 @@ class GeoIfcAssetsDock:
 
     def qwidget(self) -> Any:
         return self.widget
+
+    def switch_to_viewer_tab(self) -> None:
+        self._tabs.setCurrentIndex(2)
 
     def set_status(self, message: str, can_open_viewer: bool = False) -> None:
         self._status_label.setText(message)

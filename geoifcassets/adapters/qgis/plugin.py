@@ -64,13 +64,13 @@ class GeoIfcAssetsPlugin:
             self._iface.removeToolBarIcon(self._action)
             self._action = None
 
+        if self._viewer_dock is not None:
+            self._viewer_dock.destroy()
+            self._viewer_dock = None
+
         if self._dock is not None:
             self._dock.qwidget().close()
             self._dock = None
-
-        if self._viewer_dock is not None:
-            self._viewer_dock.qwidget().close()
-            self._viewer_dock = None
 
         self._logger.info("Plugin unloaded")
 
@@ -78,11 +78,13 @@ class GeoIfcAssetsPlugin:
         from qgis.PyQt.QtCore import Qt
 
         if self._dock is None:
+            self._viewer_dock = IfcViewerDock()
             self._dock = GeoIfcAssetsDock(
                 on_refresh_layers=self._available_ifc_layers,
                 on_layer_selected=self._features_for_layer,
                 on_feature_selected=self._select_feature,
                 on_open_viewer=self._open_viewer,
+                viewer_widget=self._viewer_dock.qwidget(),
             )
             dock_area = getattr(Qt, "RightDockWidgetArea", None)
             if dock_area is None:
@@ -181,21 +183,15 @@ class GeoIfcAssetsPlugin:
         return None
 
     def _open_viewer(self) -> None:
-        from qgis.PyQt.QtCore import Qt
-
         if self._current_reference is None:
             self._messages.warning(tr("GeoIfcAssets", "No IFC reference is available."))
             return
 
-        if self._viewer_dock is None:
-            self._viewer_dock = IfcViewerDock()
-            dock_area = getattr(Qt, "RightDockWidgetArea", None)
-            if dock_area is None:
-                dock_area = Qt.DockWidgetArea.RightDockWidgetArea
-            self._iface.addDockWidget(dock_area, self._viewer_dock.qwidget())
+        if self._viewer_dock is not None:
+            self._viewer_dock.open_reference(self._current_reference)
+        if self._dock is not None:
+            self._dock.switch_to_viewer_tab()
 
-        self._viewer_dock.open_reference(self._current_reference)
-        self._viewer_dock.qwidget().show()
         read_result = self._ifc_reader.read_summary(self._current_reference.value)
         if read_result.status is IfcReadStatus.OK and read_result.summary is not None:
             schema = read_result.summary.schema or tr("GeoIfcAssets", "unknown schema")

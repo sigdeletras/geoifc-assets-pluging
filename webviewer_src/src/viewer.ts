@@ -8,6 +8,7 @@ type ViewerPayload = {
   kind?: string;
   source?: string;
   dataBase64?: string;
+  modelUrl?: string;
 };
 
 const canvas = document.getElementById("viewer-canvas") as HTMLCanvasElement;
@@ -172,14 +173,25 @@ function addFlatMesh(api: IfcAPI, modelId: number, flatMesh: FlatMesh) {
 
 async function loadIfc(payload: ViewerPayload) {
   clearModel();
-  if (!payload.dataBase64) {
-    setStatus("IFC source received. No local IFC bytes were provided.");
+
+  let data: Uint8Array;
+
+  if (payload.modelUrl) {
+    setStatus("Fetching IFC from server...");
+    const response = await fetch(payload.modelUrl);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    data = new Uint8Array(await response.arrayBuffer());
+  } else if (payload.dataBase64) {
+    data = decodeBase64(payload.dataBase64);
+  } else {
+    setStatus("IFC source received. No IFC data available.");
     return;
   }
 
   setStatus("Loading IFC geometry...");
   const api = await getIfcApi();
-  const data = decodeBase64(payload.dataBase64);
   const modelId = api.OpenModel(data, {
     COORDINATE_TO_ORIGIN: true,
     CIRCLE_SEGMENTS: 16,
