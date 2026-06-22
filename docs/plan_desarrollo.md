@@ -86,9 +86,11 @@ i18n
 
 ### Visor embebido
 
-* Qt WebEngine
-* QWebChannel
-* HTML / JavaScript
+* Qt WebEngine (en subproceso separado, no en proceso QGIS)
+* QProcess + stdout protocol (IPC QGIS ↔ subproceso)
+* ThreadingHTTPServer + polling `/current.json` (IPC visor ↔ QGIS)
+* HTML / TypeScript (bundle Vite offline, sin CDN)
+* web-ifc (WASM) + Three.js (WebGL con fallback SwiftShader)
 
 ### Calidad
 
@@ -396,16 +398,32 @@ Los perfiles sectoriales se deben desarrollar cuando existan:
 Responsable de:
 
 * apertura del IFC asociado al feature GIS seleccionado
-* renderizado 3D en visor embebido
-* navegacion del modelo
-* seleccion de entidades IFC
-* consulta de propiedades del elemento seleccionado
+* renderizado 3D en visor embebido dentro del dock
+* navegacion del modelo (orbita, zoom, pan)
+* actualizacion del modelo al cambiar feature seleccionado en QGIS
+* reinicio automatico del subproceso si este termina
+* exploracion de elementos por categoria IFC (arbol lateral)
+* zoom de camara al elemento seleccionado en el arbol
+* consulta de atributos directos y PropertySets del elemento seleccionado
 
 Tecnologias:
 
-* Qt WebEngine
-* That Open Engine
-* QWebChannel
+* `QProcess` (gestion del subproceso Python visor)
+* `QWidget.createWindowContainer` + `QWindow.fromWinId` (embedding ventana nativa)
+* `ThreadingHTTPServer` (servidor IFC local, polling `/current.json`)
+* `web-ifc` (WASM, lectura IFC + lectura de propiedades) + `Three.js` (renderizado WebGL)
+* SwiftShader (software renderer activado via `QTWEBENGINE_CHROMIUM_FLAGS`)
+
+El visor corre en un subproceso Python separado (`webviewer_app.py`) para que
+Chromium arranque fresco y lea las flags de SwiftShader, resolviendo la
+incompatibilidad con el Chromium ya inicializado por QGIS. Ver ADR-008 y ADR-009.
+
+El arbol de elementos (Fase A) agrupa los elementos con geometria por categoria IFC,
+permite seleccionar un elemento para hacer zoom en escena 3D y muestra sus atributos
+IFC directos y PropertySets. Ver ADR-010.
+
+La comunicacion QGIS → visor es unidireccional via HTTP polling.
+La seleccion de elemento IFC → QGIS (HU-03) esta pendiente de implementacion.
 
 Este modulo forma parte del MVP.
 
