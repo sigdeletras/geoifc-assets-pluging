@@ -25,6 +25,7 @@ class IfcViewerDock:
         self.widget = QDockWidget(tr("GeoIfcAssets", "GeoIFC Assets IFC Viewer"))
         self.widget.setObjectName("GeoIfcAssetsViewerDock")
         self._pending_reference: IfcReference | None = None
+        self._viewer_html = Path(__file__).resolve().parents[2] / "webviewer" / "index.html"
 
         content = QWidget()
         layout = QVBoxLayout(content)
@@ -37,8 +38,7 @@ class IfcViewerDock:
             from qgis.PyQt.QtWebEngineWidgets import QWebEngineView
 
             self._web_view = QWebEngineView()
-            viewer_html = Path(__file__).resolve().parents[2] / "webviewer" / "index.html"
-            self._web_view.setUrl(QUrl.fromLocalFile(str(viewer_html)))
+            self._web_view.setUrl(QUrl.fromLocalFile(str(self._viewer_html)))
             self._web_view.loadFinished.connect(self._on_viewer_loaded)
             layout.addWidget(self._web_view)
         except ImportError:
@@ -62,6 +62,14 @@ class IfcViewerDock:
             tr("GeoIfcAssets", "IFC source: {source}").format(source=reference.value)
         )
         self._send_reference_to_webviewer(reference)
+
+    def clear_reference(self) -> None:
+        from qgis.PyQt.QtCore import QUrl
+
+        self._pending_reference = None
+        self._source_label.setText(tr("GeoIfcAssets", "No IFC selected."))
+        if self._web_view is not None:
+            self._web_view.setUrl(QUrl.fromLocalFile(str(self._viewer_html)))
 
     def _on_viewer_loaded(self, ok: bool) -> None:
         if ok and self._pending_reference is not None:

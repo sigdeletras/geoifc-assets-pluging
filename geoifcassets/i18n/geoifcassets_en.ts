@@ -32,6 +32,26 @@
       <translation>Workflow messages</translation>
     </message>
     <message>
+      <source>Feature ID</source>
+      <translation>Feature ID</translation>
+    </message>
+    <message>
+      <source>Feature</source>
+      <translation>Feature</translation>
+    </message>
+    <message>
+      <source>IFC source</source>
+      <translation>IFC source</translation>
+    </message>
+    <message>
+      <source>Refresh layers</source>
+      <translation>Refresh layers</translation>
+    </message>
+    <message>
+      <source>Layer/Features</source>
+      <translation>Layer/Features</translation>
+    </message>
+    <message>
       <source>Properties</source>
       <translation>Properties</translation>
     </message>
@@ -110,6 +130,10 @@
     <message>
       <source>The selected feature cannot be used.</source>
       <translation>The selected feature cannot be used.</translation>
+    </message>
+    <message>
+      <source>Feature {feature_id}</source>
+      <translation>Feature {feature_id}</translation>
     </message>
   </context>
 </TS>

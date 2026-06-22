@@ -73,3 +73,41 @@ class SelectedFeatureIfcReferenceReader:
             populated_fields=resolution.populated_fields,
             has_conflict=resolution.has_conflict,
         )
+
+    def read_from_feature(
+        self, layer: Any | None, feature: Any | None
+    ) -> FeatureIfcReferenceReadResult:
+        """Read the IFC reference from an explicit layer feature."""
+        if layer is None:
+            return FeatureIfcReferenceReadResult(status=FeatureReadStatus.NO_LAYER)
+
+        fields = [field.name() for field in layer.fields()]
+        contract = validate_ifc_reference_fields(fields)
+        if not contract.is_valid:
+            return FeatureIfcReferenceReadResult(
+                status=FeatureReadStatus.INVALID_LAYER,
+                available_fields=contract.available_fields,
+            )
+
+        if feature is None:
+            return FeatureIfcReferenceReadResult(
+                status=FeatureReadStatus.NO_SELECTION,
+                available_fields=contract.available_fields,
+            )
+
+        attributes = {field_name: feature[field_name] for field_name in fields}
+        resolution = resolve_ifc_reference_with_details(attributes)
+        if resolution.reference is None:
+            return FeatureIfcReferenceReadResult(
+                status=FeatureReadStatus.EMPTY_REFERENCE,
+                available_fields=contract.available_fields,
+                populated_fields=resolution.populated_fields,
+            )
+
+        return FeatureIfcReferenceReadResult(
+            status=FeatureReadStatus.OK,
+            reference=resolution.reference,
+            available_fields=contract.available_fields,
+            populated_fields=resolution.populated_fields,
+            has_conflict=resolution.has_conflict,
+        )

@@ -32,6 +32,26 @@
       <translation>Mensajes del flujo</translation>
     </message>
     <message>
+      <source>Feature ID</source>
+      <translation>ID de entidad</translation>
+    </message>
+    <message>
+      <source>Feature</source>
+      <translation>Entidad</translation>
+    </message>
+    <message>
+      <source>IFC source</source>
+      <translation>Fuente IFC</translation>
+    </message>
+    <message>
+      <source>Refresh layers</source>
+      <translation>Actualizar capas</translation>
+    </message>
+    <message>
+      <source>Layer/Features</source>
+      <translation>Capa/Entidades</translation>
+    </message>
+    <message>
       <source>Properties</source>
       <translation>Propiedades</translation>
     </message>
@@ -110,6 +130,10 @@
     <message>
       <source>The selected feature cannot be used.</source>
       <translation>La entidad seleccionada no se puede usar.</translation>
+    </message>
+    <message>
+      <source>Feature {feature_id}</source>
+      <translation>Entidad {feature_id}</translation>
     </message>
   </context>
 </TS>

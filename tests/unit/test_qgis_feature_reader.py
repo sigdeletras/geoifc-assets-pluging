@@ -71,6 +71,18 @@ def test_reader_resolves_selected_feature_reference() -> None:
     assert result.reference.value == "https://example.test/a.ifc"
 
 
+def test_reader_resolves_explicit_feature_reference() -> None:
+    feature = FakeFeature({"ifc_path": "models/a.ifc"})
+    layer = FakeLayer(["id", "ifc_path"], [])
+
+    result = SelectedFeatureIfcReferenceReader().read_from_feature(layer, feature)
+
+    assert result.status is FeatureReadStatus.OK
+    assert result.reference is not None
+    assert result.reference.kind is IfcReferenceKind.PATH
+    assert result.reference.value == "models/a.ifc"
+
+
 def test_reader_detects_populated_path_and_url() -> None:
     layer = FakeLayer(
         ["ifc_path", "ifc_url"],

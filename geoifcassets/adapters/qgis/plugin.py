@@ -7,7 +7,11 @@ from typing import Any
 
 from geoifcassets.adapters.ifc.reader import IfcReader, IfcReadStatus
 from geoifcassets.adapters.qgis.compat import qgis_version
-from geoifcassets.adapters.qgis.dock import GeoIfcAssetsDock
+from geoifcassets.adapters.qgis.dock import (
+    FeatureListItem,
+    GeoIfcAssetsDock,
+    LayerListItem,
+)
 from geoifcassets.adapters.qgis.feature_reader import (
     FeatureIfcReferenceReadResult,
     FeatureReadStatus,
@@ -35,6 +39,8 @@ class GeoIfcAssetsPlugin:
         self._viewer_dock: IfcViewerDock | None = None
         self._action: Any | None = None
         self._current_reference: IfcReference | None = None
+        self._selected_layer: Any | None = None
+        self._selected_feature: Any | None = None
 
     def initGui(self) -> None:  # noqa: N802
         """Create menu, toolbar action and dock."""
@@ -73,7 +79,9 @@ class GeoIfcAssetsPlugin:
 
         if self._dock is None:
             self._dock = GeoIfcAssetsDock(
-                on_refresh=self._refresh_selection,
+                on_refresh_layers=self._available_ifc_layers,
+                on_layer_selected=self._features_for_layer,
+                on_feature_selected=self._select_feature,
                 on_open_viewer=self._open_viewer,
             )
             dock_area = getattr(Qt, "RightDockWidgetArea", None)
@@ -83,11 +91,65 @@ class GeoIfcAssetsPlugin:
 
         self._dock.qwidget().show()
         self._messages.info(tr("GeoIfcAssets", "GeoIFC Assets panel opened."))
-        self._refresh_selection()
+        self._dock.refresh_layers()
 
-    def _refresh_selection(self) -> None:
-        layer = getattr(self._iface, "activeLayer", lambda: None)()
-        result = self._feature_reader.read_from_layer(layer)
+    def _available_ifc_layers(self) -> list[LayerListItem]:
+        layers = []
+        canvas = getattr(self._iface, "mapCanvas", lambda: None)()
+        canvas_layers = getattr(canvas, "layers", lambda: [])()
+        for layer in canvas_layers:
+            if not _is_vector_layer(layer):
+                continue
+            fields = [field.name() for field in layer.fields()]
+            if "ifc_path" not in fields and "ifc_url" not in fields:
+                continue
+            layers.append(
+                LayerListItem(layer_id=layer.id(), name=layer.name())
+            )
+        return layers
+
+    def _features_for_layer(self, layer_id: str) -> list[FeatureListItem]:
+        layer = self._layer_by_id(layer_id)
+        if layer is None:
+            self._sync_current_feature(
+                self._feature_reader.read_from_feature(None, None)
+            )
+            return []
+        self._selected_layer = layer
+        self._selected_feature = None
+        self._sync_current_feature(
+            self._feature_reader.read_from_feature(layer, None)
+        )
+        features = []
+        fields = [field.name() for field in layer.fields()]
+        for feature in layer.getFeatures():
+            source = _feature_ifc_source(feature, fields)
+            features.append(
+                FeatureListItem(
+                    feature_id=feature.id(),
+                    label=_feature_label(feature),
+                    ifc_source=source,
+                )
+            )
+        return features
+
+    def _select_feature(self, layer_id: str, feature_id: int) -> None:
+        layer = self._layer_by_id(layer_id)
+        feature = _feature_by_id(layer, feature_id)
+        self._selected_layer = layer
+        self._selected_feature = feature
+
+        result = self._feature_reader.read_from_feature(layer, feature)
+        self._sync_current_feature(result)
+
+        if self._current_reference is not None and self._viewer_dock is not None:
+            self._viewer_dock.open_reference(self._current_reference)
+        elif self._viewer_dock is not None:
+            self._viewer_dock.clear_reference()
+
+    def _sync_current_feature(
+        self, result: FeatureIfcReferenceReadResult
+    ) -> None:
         self._current_reference = result.reference
         message = self._message_for_read_result(result)
 
@@ -110,6 +172,13 @@ class GeoIfcAssetsPlugin:
                 )
         else:
             self._logger.warning("IFC reference could not be resolved", status=result.status.value)
+
+    def _layer_by_id(self, layer_id: str) -> Any | None:
+        canvas = getattr(self._iface, "mapCanvas", lambda: None)()
+        for layer in getattr(canvas, "layers", lambda: [])():
+            if getattr(layer, "id", lambda: None)() == layer_id:
+                return layer
+        return None
 
     def _open_viewer(self) -> None:
         from qgis.PyQt.QtCore import Qt
@@ -165,3 +234,46 @@ class GeoIfcAssetsPlugin:
         if result.status is FeatureReadStatus.EMPTY_REFERENCE:
             return tr("GeoIfcAssets", "The selected feature has no IFC path or URL.")
         return tr("GeoIfcAssets", "The selected feature cannot be used.")
+
+
+def _is_vector_layer(layer: Any) -> bool:
+    try:
+        from qgis.core import QgsMapLayer
+
+        vector_type = getattr(QgsMapLayer, "VectorLayer", None)
+        if vector_type is None:
+            vector_type = QgsMapLayer.LayerType.VectorLayer
+        return layer.type() == vector_type
+    except Exception:  # noqa: BLE001
+        return hasattr(layer, "getFeatures") and hasattr(layer, "fields")
+
+
+def _feature_by_id(layer: Any | None, feature_id: int) -> Any | None:
+    if layer is None:
+        return None
+    for feature in layer.getFeatures():
+        if feature.id() == feature_id:
+            return feature
+    return None
+
+
+def _feature_ifc_source(feature: Any, fields: list[str]) -> str:
+    for field_name in ("ifc_path", "ifc_url"):
+        if field_name in fields:
+            value = str(feature[field_name] or "").strip()
+            if value:
+                return value
+    return ""
+
+
+def _feature_label(feature: Any) -> str:
+    for field_name in ("name", "nombre", "Name", "Nombre"):
+        try:
+            value = str(feature[field_name] or "").strip()
+        except Exception:  # noqa: BLE001
+            continue
+        if value:
+            return value
+    return tr("GeoIfcAssets", "Feature {feature_id}").format(
+        feature_id=feature.id()
+    )
