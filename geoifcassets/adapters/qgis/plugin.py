@@ -19,7 +19,7 @@ from geoifcassets.adapters.qgis.feature_reader import (
 )
 from geoifcassets.adapters.qgis.i18n import tr
 from geoifcassets.adapters.qgis.messages import QgisMessageService
-from geoifcassets.adapters.qgis.viewer import IfcViewerDock
+from geoifcassets.adapters.qgis.viewer import IfcViewerDock, _ensure_swiftshader_flag
 from geoifcassets.core.models import IfcReference
 from geoifcassets.services.logging import PluginLogger
 
@@ -44,6 +44,10 @@ class GeoIfcAssetsPlugin:
 
     def initGui(self) -> None:  # noqa: N802
         """Create menu, toolbar action and dock."""
+        # Set Chromium flags as early as possible (before any QWebEngineView
+        # is created in this QGIS session) so SwiftShader applies on first use.
+        _ensure_swiftshader_flag()
+
         from qgis.PyQt.QtGui import QIcon
         from qgis.PyQt.QtWidgets import QAction
 
