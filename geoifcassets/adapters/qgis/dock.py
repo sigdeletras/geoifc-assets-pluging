@@ -11,12 +11,17 @@ from geoifcassets.adapters.qgis.i18n import tr
 class GeoIfcAssetsDock:
     """Factory wrapper for the QGIS dock widget."""
 
-    def __init__(self, on_refresh: Callable[[], None], on_open_viewer: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        on_refresh: Callable[[], None],
+        on_open_viewer: Callable[[], None],
+    ) -> None:
         from qgis.PyQt.QtWidgets import (
             QDockWidget,
             QHBoxLayout,
             QLabel,
             QPushButton,
+            QTabWidget,
             QTextEdit,
             QVBoxLayout,
             QWidget,
@@ -28,6 +33,12 @@ class GeoIfcAssetsDock:
         content = QWidget()
         layout = QVBoxLayout(content)
 
+        tabs = QTabWidget()
+        properties_tab = QWidget()
+        properties_layout = QVBoxLayout(properties_tab)
+        viewer_tab = QWidget()
+        viewer_layout = QVBoxLayout(viewer_tab)
+
         self._status_label = QLabel(
             tr(
                 "GeoIfcAssets",
@@ -35,7 +46,12 @@ class GeoIfcAssetsDock:
             )
         )
         self._status_label.setWordWrap(True)
-        layout.addWidget(self._status_label)
+        properties_layout.addWidget(self._status_label)
+
+        self._user_log = QTextEdit()
+        self._user_log.setReadOnly(True)
+        self._user_log.setPlaceholderText(tr("GeoIfcAssets", "Workflow messages"))
+        properties_layout.addWidget(self._user_log)
 
         buttons_layout = QHBoxLayout()
         self._refresh_button = QPushButton(tr("GeoIfcAssets", "Refresh selection"))
@@ -45,14 +61,13 @@ class GeoIfcAssetsDock:
         self._open_button.clicked.connect(on_open_viewer)
         buttons_layout.addWidget(self._refresh_button)
         buttons_layout.addWidget(self._open_button)
-        layout.addLayout(buttons_layout)
+        viewer_layout.addLayout(buttons_layout)
+        viewer_layout.addStretch(1)
 
-        self._user_log = QTextEdit()
-        self._user_log.setReadOnly(True)
-        self._user_log.setPlaceholderText(tr("GeoIfcAssets", "Workflow messages"))
-        layout.addWidget(self._user_log)
+        tabs.addTab(properties_tab, tr("GeoIfcAssets", "Properties"))
+        tabs.addTab(viewer_tab, tr("GeoIfcAssets", "IFC Viewer"))
+        layout.addWidget(tabs)
 
-        layout.addStretch(1)
         self.widget.setWidget(content)
 
     def qwidget(self) -> Any:

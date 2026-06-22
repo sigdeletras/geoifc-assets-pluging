@@ -32,6 +32,14 @@
       <translation>Mensajes del flujo</translation>
     </message>
     <message>
+      <source>Properties</source>
+      <translation>Propiedades</translation>
+    </message>
+    <message>
+      <source>IFC Viewer</source>
+      <translation>Visor IFC</translation>
+    </message>
+    <message>
       <source>GeoIFC Assets IFC Viewer</source>
       <translation>Visor IFC de GeoIFC Assets</translation>
     </message>

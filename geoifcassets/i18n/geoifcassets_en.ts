@@ -32,6 +32,14 @@
       <translation>Workflow messages</translation>
     </message>
     <message>
+      <source>Properties</source>
+      <translation>Properties</translation>
+    </message>
+    <message>
+      <source>IFC Viewer</source>
+      <translation>IFC Viewer</translation>
+    </message>
+    <message>
       <source>GeoIFC Assets IFC Viewer</source>
       <translation>GeoIFC Assets IFC Viewer</translation>
     </message>
