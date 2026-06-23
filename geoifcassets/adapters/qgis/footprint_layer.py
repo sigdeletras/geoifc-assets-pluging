@@ -10,7 +10,7 @@ from geoifcassets.adapters.ifc.footprint_extractor import StoreyFootprint
 _log = logging.getLogger("geoifcassets")
 
 
-def add_footprint_layer(footprint: StoreyFootprint, ifc_path: str) -> None:
+def add_footprint_layer(footprint: StoreyFootprint, ifc_path: str) -> str:
     """Create and add a temporary Polygon layer to the current QGIS project.
 
     The geometry is reprojected from the IFC CRS to the project CRS when both
@@ -19,6 +19,9 @@ def add_footprint_layer(footprint: StoreyFootprint, ifc_path: str) -> None:
 
     The layer is not saved to disk — it exists only for the duration of the
     QGIS session or until the user removes it manually.
+
+    Returns the authid of the CRS used for the layer (project CRS when
+    reprojected, IFC CRS otherwise).
 
     Raises RuntimeError when the memory layer cannot be created.
     """
@@ -96,3 +99,4 @@ def add_footprint_layer(footprint: StoreyFootprint, ifc_path: str) -> None:
         footprint.element_count,
         footprint.used_fallback,
     )
+    return target_crs.authid()

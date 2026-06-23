@@ -384,7 +384,7 @@ class GeoIfcAssetsPlugin:
             return
 
         try:
-            add_footprint_layer(footprint, ifc_path)
+            layer_crs = add_footprint_layer(footprint, ifc_path)
         except Exception as exc:  # noqa: BLE001
             self._messages.warning(
                 tr("GeoIfcAssets", "Could not create QGIS layer: {error}").format(error=str(exc))
@@ -392,10 +392,16 @@ class GeoIfcAssetsPlugin:
             self._logger.error("Footprint layer creation failed", error=str(exc))
             return
 
+        crs_note = layer_crs
+        if layer_crs != footprint.crs_auth_id:
+            crs_note = tr(
+                "GeoIfcAssets", "{layer_crs}, reprojected from {ifc_crs}"
+            ).format(layer_crs=layer_crs, ifc_crs=footprint.crs_auth_id)
+
         msg = tr(
             "GeoIfcAssets",
             "Floor '{storey}' added as temporary QGIS layer ({crs}).",
-        ).format(storey=storey_name, crs=footprint.crs_auth_id)
+        ).format(storey=storey_name, crs=crs_note)
         if footprint.used_fallback:
             msg += " " + tr(
                 "GeoIfcAssets",
