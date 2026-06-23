@@ -782,6 +782,19 @@ Condicion de activacion:
 * Se activa solo cuando el IFC tiene georreferenciacion completa via `IfcMapConversion`.
 * Esta historia es evolutiva y no forma parte del MVP. Se implementa tras validar el flujo manual de propiedades (HU-05 a HU-08).
 
+Diseno de integracion con el selector de plantas existente:
+
+* El selector de plantas del visor (storey bar) ya existe en TypeScript (Phase D). Al pulsar una planta,
+  el visor JS notifica a Python mediante `POST /transfer` con `{"type": "storey_selected", "storey_id": N, "storey_name": "..."}`.
+  Al pulsar All, notifica con `storey_id: null`.
+* El endpoint `/transfer` ya existe en `IfcHttpServer`. No se requiere infraestructura IPC nueva.
+* `GeoIfcAssetsPlugin._handle_transfer` despacha el nuevo tipo para actualizar `_active_storey`.
+* El boton "Generar planta en QGIS" aparece en la barra inferior del visor tab del dock, habilitado
+  solo cuando hay una planta activa y el IFC es un fichero local.
+* La extraccion de geometria se realiza en el proceso QGIS via IfcOpenShell (independiente de web-ifc).
+* Modulos nuevos: `adapters/ifc/footprint_extractor.py` (logica IFC pura) y
+  `adapters/qgis/footprint_layer.py` (creacion de capa QGIS).
+
 ---
 
 # 8. Casos de uso

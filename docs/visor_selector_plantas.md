@@ -24,8 +24,9 @@ cuando el modelo IFC contiene al menos una entidad `IfcBuildingStorey`.
   - Los meshes de elementos que pertenecen a esa planta se hacen **visibles**.
   - El resto de meshes se ocultan (`mesh.visible = false`).
   - La cámara hace fit automático a la bounding box de los elementos visibles.
+  - El árbol de elementos se sincroniza con la planta seleccionada (ver F3).
 - El botón activo se distingue visualmente.
-- Al pulsar **All** se restaura la visibilidad completa.
+- Al pulsar **All** se restaura la visibilidad completa y el árbol vuelve al estado global.
 
 La barra desaparece al limpiar el modelo (al seleccionar un feature GIS diferente).
 
@@ -48,6 +49,29 @@ Un botón **2D** flota en la esquina superior derecha del canvas. Aparece cuando
 
 Si se cambia de planta estando en modo 2D, el fit de cámara se adapta a la bounding box de la
 nueva selección manteniendo la vista cenital.
+
+### F3 — Sincronización del árbol de elementos con la planta activa
+
+Al seleccionar una planta, el panel lateral (árbol de elementos) se filtra automáticamente para
+mostrar solo los elementos de esa planta, tanto en la vista **Category** como en la vista **Spatial**.
+
+**Vista Category (árbol por categorías):**
+
+- Cada categoría muestra únicamente los elementos cuyo `expressId` pertenece a la planta activa.
+- Las categorías sin elementos en la planta seleccionada desaparecen del árbol.
+- El contador de cada categoría refleja el número de elementos visible, no el total del modelo.
+
+**Vista Spatial (árbol espacial):**
+
+- El árbol colapsa al nodo `IfcBuildingStorey` activo; los demás storeys y la jerarquía superior
+  (Project → Site → Building) desaparecen.
+- Dentro del storey se mantiene la estructura completa: sub-espacios (`IfcSpace`) y elementos
+  contenidos directamente.
+
+Al pulsar **All** ambas vistas vuelven a mostrar el modelo completo sin filtrar.
+
+El filtrado del árbol es inmediato y no requiere recarga del modelo: se basa en el mapa
+`elementToStorey` construido durante la indexación inicial.
 
 ---
 
@@ -109,7 +133,36 @@ Complejidad: O(N_meshes) por filtrado. En modelos grandes con >10.000 meshes est
 ~100–200 ms; es aceptable para interacción de usuario.
 
 Tras filtrar, calcula la bounding box de los meshes visibles y llama a `fitCameraToBox` (modo 3D)
-o `fitCamera2DToBox` (modo 2D).
+o `fitCamera2DToBox` (modo 2D). Al final invoca `renderActiveTree()` para sincronizar el árbol
+lateral con la planta activa (F3).
+
+### Árbol filtrado por planta (F3)
+
+**`renderCategoryTree`** — antes de crear cada bloque de categoría, filtra la lista de elementos:
+
+```typescript
+const filtered = activeStoreyId === null
+  ? elements
+  : elements.filter((el) => elementToStorey.get(el.expressId) === activeStoreyId);
+if (filtered.length === 0) continue; // omite categorías vacías en esta planta
+```
+
+El contador de la categoría refleja `filtered.length`, no el total del modelo.
+
+**`renderSpatialTree`** — si hay planta activa, localiza el nodo en `storeys[]` y renderiza solo
+ese subárbol en lugar del `spatialRoot` completo:
+
+```typescript
+if (activeStoreyId !== null) {
+  const activeStorey = storeys.find((s) => s.expressId === activeStoreyId);
+  if (activeStorey) appendSpatialNode(activeStorey, frag);
+} else {
+  appendSpatialNode(spatialRoot, frag);
+}
+```
+
+Ambas funciones ya tenían acceso a `activeStoreyId` y `elementToStorey` como estado de módulo,
+por lo que no se necesitan parámetros adicionales.
 
 ---
 
@@ -158,6 +211,11 @@ prácticamente ortogonal para modelos de edificación estándar.
 8. Combinar: seleccionar planta + activar 2D → vista de plano de planta.
 9. Cambiar de planta en modo 2D → el fit se adapta y mantiene la vista cenital.
 10. Cargar un IFC sin estructura espacial → la barra de plantas no aparece; el botón 2D sí.
+11. (F3) Seleccionar una planta en vista **Category** → el árbol muestra solo las categorías con
+    elementos en esa planta; las vacías desaparecen; los contadores son correctos.
+12. (F3) Cambiar a vista **Spatial** con planta activa → el árbol muestra únicamente el nodo del
+    storey seleccionado con sus subespacios y elementos.
+13. (F3) Pulsar **All** → ambas vistas vuelven al árbol completo del modelo.
 
 ---
 

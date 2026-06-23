@@ -544,7 +544,18 @@ function updateStoreyBarUI(): void {
   });
 }
 
+function notifyStoreySelected(storeyId: number | null, storeyName: string | null): void {
+  fetch(`${window.location.origin}/transfer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "storey_selected", storey_id: storeyId, storey_name: storeyName }),
+  }).catch(() => {
+    // Non-critical: viewer remains fully functional if server is unavailable
+  });
+}
+
 function filterByStorey(storeyId: number | null): void {
+  const storeyNode = storeyId !== null ? storeys.find((s) => s.expressId === storeyId) : null;
   activeStoreyId = storeyId;
   modelGroup?.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
@@ -561,6 +572,8 @@ function filterByStorey(storeyId: number | null): void {
     fitCameraToBox(box);
   }
   updateStoreyBarUI();
+  renderActiveTree();
+  notifyStoreySelected(storeyId, storeyNode?.name ?? null);
 }
 
 function renderStoreyBar(): void {
@@ -832,6 +845,11 @@ function renderCategoryTree(): void {
   const frag = document.createDocumentFragment();
 
   for (const [category, elements] of elementsByCategory) {
+    const filtered = activeStoreyId === null
+      ? elements
+      : elements.filter((el) => elementToStorey.get(el.expressId) === activeStoreyId);
+    if (filtered.length === 0) continue;
+
     const details = document.createElement("details");
     details.className = "tree-cat";
     details.open = true;
@@ -839,12 +857,12 @@ function renderCategoryTree(): void {
     const summary = document.createElement("summary");
     summary.innerHTML =
       `<span class="cat-label">${escHtml(category)}</span>` +
-      `<span class="cat-count">${elements.length}</span>`;
+      `<span class="cat-count">${filtered.length}</span>`;
     details.appendChild(summary);
 
     const ul = document.createElement("ul");
     ul.className = "tree-list";
-    for (const el of elements) {
+    for (const el of filtered) {
       ul.appendChild(makeElementLi(el));
     }
     details.appendChild(ul);
@@ -865,7 +883,16 @@ function renderSpatialTree(): void {
   }
 
   const frag = document.createDocumentFragment();
-  appendSpatialNode(spatialRoot, frag);
+
+  if (activeStoreyId !== null) {
+    const activeStorey = storeys.find((s) => s.expressId === activeStoreyId);
+    if (activeStorey) {
+      appendSpatialNode(activeStorey, frag);
+    }
+  } else {
+    appendSpatialNode(spatialRoot, frag);
+  }
+
   elementTreeEl.innerHTML = "";
   elementTreeEl.appendChild(frag);
 }

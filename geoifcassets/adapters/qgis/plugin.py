@@ -41,6 +41,7 @@ class GeoIfcAssetsPlugin:
         self._current_reference: IfcReference | None = None
         self._selected_layer: Any | None = None
         self._selected_feature: Any | None = None
+        self._active_storey: dict | None = None
 
     def initGui(self) -> None:  # noqa: N802
         """Create menu, toolbar action and dock."""
@@ -89,6 +90,7 @@ class GeoIfcAssetsPlugin:
                 on_feature_selected=self._select_feature,
                 on_open_viewer=self._open_viewer,
                 viewer_widget=self._viewer_dock.qwidget(),
+                on_generate_footprint=self._generate_footprint,
             )
             dock_area = getattr(Qt, "RightDockWidgetArea", None)
             if dock_area is None:
@@ -147,6 +149,10 @@ class GeoIfcAssetsPlugin:
 
         result = self._feature_reader.read_from_feature(layer, feature)
         self._sync_current_feature(result)
+
+        self._active_storey = None
+        if self._dock is not None:
+            self._dock.set_active_storey(None)
 
         if self._current_reference is not None and self._viewer_dock is not None:
             self._viewer_dock.open_reference(self._current_reference)
@@ -221,9 +227,191 @@ class GeoIfcAssetsPlugin:
         )
 
     def _handle_transfer(self, data: dict) -> None:
-        """Receive a BIM→GIS transfer request from the viewer (Qt main thread)."""
-        self._logger.info("BIM→GIS transfer received", pset=data.get("pset"), key=data.get("key"))
-        self._show_transfer_dialog(data)
+        """Receive a transfer message from the viewer (Qt main thread).
+
+        Dispatches on ``data["type"]``:
+        - ``"storey_selected"`` — storey filter changed in the viewer
+        - anything else         — BIM→GIS property transfer (legacy default)
+        """
+        msg_type = data.get("type")
+        if msg_type == "storey_selected":
+            self._handle_storey_selected(data)
+        else:
+            self._logger.info(
+                "BIM→GIS transfer received", pset=data.get("pset"), key=data.get("key")
+            )
+            self._show_transfer_dialog(data)
+
+    def _handle_storey_selected(self, data: dict) -> None:
+        """Update active storey state when the viewer storey bar changes."""
+        storey_id = data.get("storey_id")
+        storey_name = data.get("storey_name")
+        if storey_id is None:
+            self._active_storey = None
+            if self._dock is not None:
+                self._dock.set_active_storey(None)
+            self._logger.info("Storey filter cleared in viewer")
+        else:
+            self._active_storey = data
+            if self._dock is not None:
+                self._dock.set_active_storey(storey_name)
+            self._logger.info("Storey selected in viewer", storey_id=storey_id, storey_name=storey_name)
+
+    def _ask_manual_georef(self) -> "GeorefInfo | None":  # type: ignore[name-defined]
+        """Show a dialog to collect an EPSG code when the IFC has no IfcMapConversion.
+
+        Returns a GeorefInfo with identity transformation (coordinates pass through
+        unchanged) using the user-supplied CRS, or None if the user cancels.
+        """
+        from geoifcassets.adapters.ifc.footprint_extractor import GeorefInfo  # noqa: PLC0415
+        from qgis.PyQt.QtWidgets import (  # noqa: PLC0415
+            QDialog,
+            QDialogButtonBox,
+            QFormLayout,
+            QLabel,
+            QLineEdit,
+            QVBoxLayout,
+        )
+
+        dlg = QDialog()
+        dlg.setWindowTitle(tr("GeoIfcAssets", "Specify CRS for IFC footprint"))
+        dlg.setMinimumWidth(420)
+        layout = QVBoxLayout(dlg)
+
+        info = QLabel(
+            tr(
+                "GeoIfcAssets",
+                "No IfcMapConversion found in this IFC file.\n\n"
+                "If the model coordinates are already in a known projected CRS "
+                "(e.g. exported directly in UTM), enter its EPSG code and the "
+                "geometry will be used as-is without any coordinate transformation.",
+            )
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        form = QFormLayout()
+        epsg_input = QLineEdit()
+        epsg_input.setPlaceholderText(tr("GeoIfcAssets", "e.g. 25830"))
+        form.addRow(tr("GeoIfcAssets", "EPSG code:"), epsg_input)
+        layout.addLayout(form)
+
+        try:
+            ok_cancel = QDialogButtonBox.Ok | QDialogButtonBox.Cancel  # type: ignore[attr-defined]
+        except AttributeError:
+            ok_cancel = (
+                QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            )
+        buttons = QDialogButtonBox(ok_cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+
+        if not dlg.exec():
+            return None
+
+        epsg_raw = epsg_input.text().strip().lstrip("EPSGepsg: ")
+        if not epsg_raw.isdigit():
+            self._messages.warning(
+                tr("GeoIfcAssets", "Invalid EPSG code. Enter digits only (e.g. 25830).")
+            )
+            return None
+
+        self._logger.info("Manual CRS supplied for footprint", epsg=epsg_raw)
+        return GeorefInfo(
+            eastings=0.0,
+            northings=0.0,
+            orthogonal_height=0.0,
+            x_axis_abscissa=1.0,
+            x_axis_ordinate=0.0,
+            scale=1.0,
+            crs_name=f"EPSG:{epsg_raw}",
+            epsg=epsg_raw,
+        )
+
+    def _generate_footprint(self) -> None:
+        """Extract floor footprint from current IFC and add it as a temporary QGIS layer."""
+        from geoifcassets.adapters.ifc.footprint_extractor import (  # noqa: PLC0415
+            FootprintExtractError,
+            GeorefInfo,
+            detect_georef,
+            diagnose_georef,
+            extract_storey_footprint,
+        )
+        from geoifcassets.adapters.qgis.footprint_layer import add_footprint_layer  # noqa: PLC0415
+
+        if self._current_reference is None:
+            self._messages.warning(tr("GeoIfcAssets", "No IFC file is loaded."))
+            return
+
+        if self._active_storey is None:
+            self._messages.warning(
+                tr("GeoIfcAssets", "Select a storey in the IFC viewer before generating the footprint.")
+            )
+            return
+
+        ifc_path = self._current_reference.value
+        if ifc_path.startswith(("http://", "https://")):
+            self._messages.warning(
+                tr("GeoIfcAssets", "Floor footprint is only available for local IFC files.")
+            )
+            return
+
+        storey_id: int = self._active_storey.get("storey_id")
+        storey_name: str = self._active_storey.get("storey_name") or f"Storey #{storey_id}"
+
+        georef = detect_georef(ifc_path)
+        if georef is None:
+            diag = diagnose_georef(ifc_path)
+            if self._dock is not None:
+                self._dock.add_user_log(
+                    tr("GeoIfcAssets", "Georeferencing diagnostic: {diag}").format(diag=diag)
+                )
+            self._logger.warning("No IfcMapConversion — asking for manual CRS", source=ifc_path, diag=diag)
+            georef = self._ask_manual_georef()
+            if georef is None:
+                return
+
+        try:
+            footprint = extract_storey_footprint(ifc_path, storey_id, storey_name, georef)
+        except FootprintExtractError as exc:
+            self._messages.warning(
+                tr("GeoIfcAssets", "Could not extract floor footprint: {error}").format(
+                    error=str(exc)
+                )
+            )
+            self._logger.warning("Footprint extraction failed", error=str(exc))
+            return
+
+        try:
+            add_footprint_layer(footprint, ifc_path)
+        except Exception as exc:  # noqa: BLE001
+            self._messages.warning(
+                tr("GeoIfcAssets", "Could not create QGIS layer: {error}").format(error=str(exc))
+            )
+            self._logger.error("Footprint layer creation failed", error=str(exc))
+            return
+
+        msg = tr(
+            "GeoIfcAssets",
+            "Floor '{storey}' added as temporary QGIS layer ({crs}).",
+        ).format(storey=storey_name, crs=footprint.crs_auth_id)
+        if footprint.used_fallback:
+            msg += " " + tr(
+                "GeoIfcAssets",
+                "(No IfcSlab found — all elements used as geometry source.)",
+            )
+
+        self._messages.info(msg)
+        if self._dock is not None:
+            self._dock.add_user_log(msg)
+        self._logger.info(
+            "Footprint layer created",
+            storey=storey_name,
+            crs=footprint.crs_auth_id,
+            elements=footprint.element_count,
+            used_fallback=footprint.used_fallback,
+        )
 
     def _show_transfer_dialog(self, data: dict) -> None:
         """Open a dialog that maps one BIM property value onto a GIS layer field."""
