@@ -1,161 +1,548 @@
 
-## Definición Formal del Alcance del 
-**Módulo independiente para probar la  integración un visor BIM nativo para archivos IFC, con arquitectura desacoplada (Adaptador) y servidor HTTP concurrente embebido, operando en entorno local offline.**
+# Referencia Técnica: Visor IFC
+
+## Arquitectura implementada
+
+El visor IFC de GeoIFC Assets es un **subproceso Python independiente** gestionado desde el proceso QGIS mediante `QProcess`. La ventana del subproceso se embebe directamente en la pestaña "IFC Viewer" del dock principal.
+
+Las decisiones arquitectónicas que justifican este diseño están formalizadas en **ADR-008** (subproceso + SwiftShader + polling HTTP) y **ADR-009** (embedding en dock).
 
 ---
 
-### 1. Objetivo General
-Desarrollar un módulo que permita visualizar modelos IFC (Industry Foundation Classes) dentro de un panel acoplable, sin necesidad de conversiones previas ni dependencia de servicios en la nube para los datos. La librería de renderizado se carga desde CDN, por lo que **se requiere conexión a internet**. La arquitectura incluirá una capa de abstracción (Adaptador) que aísle la lógica de visualización, permitiendo cambiar la librería de renderizado (ej. That Open Engine ↔ xeokit) sin modificar el código Python del plugin.
+## Diagrama general
+
+```mermaid
+flowchart TB
+    subgraph QGIS["PROCESO QGIS"]
+        initGui["initGui()"]
+        swiftshader["_ensure_swiftshader_flag()"]
+        selectFeat["_select_feature()"]
+        openRef["viewer_dock.open_reference()"]
+        handleTransfer["plugin._handle_transfer(data)"]
+        showDialog["_show_transfer_dialog → QDialog → changeAttributeValue"]
+
+        subgraph Dock["IfcViewerDock · QVBoxLayout"]
+            srcLabel["_source_label (ruta IFC)"]
+            statusLabel["_status_label (estado proceso)"]
+            timer["QTimer 250 ms → _poll_transfers()"]
+        end
+
+        subgraph Server["IfcHttpServer · ThreadingHTTP :puerto"]
+            indexHtml["/index.html + /assets/*"]
+            modeloIfc["/modelo.ifc"]
+            currentJson["/current.json"]
+            transferPost["POST /transfer → _pending_transfers queue"]
+        end
+
+        initGui --> swiftshader
+        selectFeat --> openRef --> srcLabel
+        openRef -->|"set_ifc_path"| modeloIfc
+        timer -->|"pop_pending_transfer()"| transferPost
+        timer --> handleTransfer --> showDialog
+    end
+
+    QProc["QProcess\npython3.exe webviewer_app.py puerto url"]
+
+    subgraph Sub["SUBPROCESO Python — webviewer_app.py (ventana flotante)"]
+        App["QApplication · setQuitOnLastWindowClosed=False"]
+        ViewWin["_ViewerWindow · QWebEngineView · view.show()"]
+        readyPrint["print READY:win_id → stdout → _status_label"]
+
+        subgraph Chromium["Chromium (proceso fresco, flags SwiftShader)"]
+            webIfc["web-ifc WASM"]
+            threeJs["Three.js WebGLRenderer"]
+            polling["polling /current.json cada 1.5 s"]
+            loadIfc["version cambia → fetch /modelo.ifc → cargar IFC"]
+            transferBtn["botón → prop-transfer → fetch POST /transfer"]
+        end
+
+        App --> ViewWin --> readyPrint
+        polling --> loadIfc
+    end
+
+    Dock -->|"QProcess.start"| QProc
+    QProc -->|"inicia"| Sub
+    readyPrint -->|"actualiza"| statusLabel
+    loadIfc -->|"GET"| modeloIfc
+    polling -->|"GET"| currentJson
+    transferBtn -->|"POST {pset,key,value}"| transferPost
+```
 
 ---
 
-### 2. Arquitectura General (Cliente-Servidor Local Concurrente con Adaptador)
+## Componentes Python
+
+### `_ensure_swiftshader_flag()` — `viewer.py`
+
+Configura las variables de entorno de Chromium **antes** de que se cree ningún widget Qt:
+
+```python
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+    "--enable-unsafe-swiftshader --ignore-gpu-blocklist"
+)
+```
+
+Se llama desde `initGui()` del plugin. El subproceso hereda estas variables porque `_launch_subprocess()` copia `os.environ` al `QProcessEnvironment`.
+
+**Por qué no funciona en proceso:** Chromium solo lee `QTWEBENGINE_CHROMIUM_FLAGS` al arrancar el proceso Chromium. Si QGIS ya ha inicializado algún `QWebEngineView` (habitual con plugins de mapas web), el proceso Chromium ya existe y las flags son ignoradas.
+
+---
+
+### `_find_python_executable()` — `viewer.py`
+
+En QGIS, `sys.executable` apunta al binario del host (`qgis-bin.exe`), no al intérprete Python. Pasar ese valor a `QProcess.start()` hace que QGIS interprete los argumentos como rutas de datos, produciendo errores. Esta función localiza el intérprete real:
 
 ```
-+---------------------------------------------------+
-|                    QGIS                            |
-|  +---------------------------------------------+  |
-|  |   QDockWidget                               |  |
-|  |  +---------------------------------------+  |  |
-|  |  | QWebEngineView                        |  |  |
-|  |  | (Carga index.html + adapter)          |  |  |
-|  |  +------------------^--------------------+  |  |
-|  |                     | runJavaScript          |  |
-|  |  +------------------v--------------------+  |  |
-|  |  |      Lógica JS (Core - main.js)      |  |  | <-- Orquesta la carga y eventos
-|  |  +------------------^--------------------+  |  |
-|  |                     | Llama métodos estandar |  |
-|  |  +------------------v--------------------+  |  |
-|  |  |    ADAPTADOR DEL VISOR (API)         |  |  | <-- CAPA DE ABSTRACCIÓN
-|  |  |   (Interfaz estándar:                |  |  |
-|  |  |    loadModel, highlight, destroy)    |  |  |
-|  |  +------------------^--------------------+  |  |
-|  |                     | Implementa            |  |
-|  |  +------------------v--------------------+  |  |
-|  |  | Librería A (That Open Engine)        |  |  | <-- Fácilmente reemplazable
-|  |  | o Librería B (xeokit)                |  |  |
-|  |  +------------------^--------------------+  |  |
-|  |                     | Carga IFC (fetch)    |  |  |
-|  |  +------------------v--------------------+  |  |
-|  |  | Servidor ThreadingHTTPServer         |  |  | <-- CONCURRENTE (NUEVO)
-|  |  | (Handler custom con Lock para ruta)  |  |  |
-|  |  +------------------^--------------------+  |  |
-|  |                     | Lee disco (paralelo)  |  |
-|  +---------------------+-----------------------+  |
-|                       | Ruta absoluta             |
-+-----------------------+---------------------------+
-                        |
-                  [Archivo .ifc]
+qgis_bin/python3.exe   ← instalación OSGeo4W Windows (prioridad máxima)
+qgis_bin/python.exe
+sys.prefix/python.exe
+sys.prefix/bin/python3  ← Linux / macOS
+sys.prefix/bin/python
+which("python3")         ← fallback del sistema
 ```
 
 ---
 
-### 3. Decisiones Técnicas Finales (Por Capas)
+### `IfcHttpServer` — `viewer.py`
 
-#### A. Capa de Integración en QGIS (Backend PyQGIS)
-- **Lenguaje**: Python 3.9+ (QGIS 3.28 LTS).
-- **Componente de navegación web**: `QWebEngineView` (basado en Chromium) para renderizar el visor HTML/JS dentro del panel.
-- **Manejo de hilos**: El servidor se ejecutará en un **hilo demonio** (`threading.Thread`, `daemon=True`) para no bloquear la interfaz gráfica de QGIS.
-- **Selección de archivos**: `QFileDialog.getOpenFileName()` con filtro `*.ifc;*.IFC`.
-- **Ciclo de vida**: El servidor se inicia al activar el plugin (`initGui`) y se destruye (`.shutdown()`, `.server_close()`) al descargarlo (`unload`) o cerrar QGIS.
+Servidor `ThreadingHTTPServer` que corre en un hilo demonio. Expone los siguientes recursos:
 
-#### B. Capa de Comunicación (Servidor HTTP Embebido Concurrente) 
-- **Librería base**: `http.server.ThreadingHTTPServer` y `SimpleHTTPRequestHandler` (módulos nativos de Python, disponibles desde Python 3.7+).
-- **Justificación**: Se opta por `ThreadingHTTPServer` frente al `HTTPServer` síncrono para manejar múltiples peticiones en **paralelo** (ej. el navegador solicita el HTML, el CSS, el JS y el pesado IFC simultáneamente). Esto evita bloqueos, timeouts y acelera la carga inicial del visor.
-- **Handler personalizado**: Clase `CustomHandler` que sobrescribe el método `do_GET()`.
-    - **Ruta interceptada**: `/modelo.ifc` (fija).
-    - **Comportamiento**: Sirve el archivo IFC directamente desde la **ruta absoluta** guardada en memoria (sin copiar ni mover el archivo físico). Para el resto de rutas (`/index.html`, `/main.js`, `/adapter.js`), delega en `super().do_GET()` para servir archivos estáticos desde el directorio `web_visor`.
-- **Gestión de concurrencia (Thread-Safety)**: Como `CustomHandler` usa una variable de clase (`ifc_path`) que se actualiza cuando el usuario cambia de archivo, se emplea un **`threading.Lock`** para proteger la escritura de esta ruta y evitar condiciones de carrera entre hilos.
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/index.html` | Fichero HTML del visor (delegado a `SimpleHTTPRequestHandler`) |
+| `GET` | `/assets/*` | Bundle JS de viewer.ts compilado por Vite |
+| `GET` | `/modelo.ifc` | Sirve el fichero IFC activo desde disco local sin copiarlo |
+| `GET` | `/current.json` | `{"version": N, "ifc_url": "/modelo.ifc" \| null}` — counter de versión |
+| `POST` | `/transfer` | Recibe `{ pset, key, value }` del JS; encola en `_pending_transfers` |
 
-    ```python
-    class CustomHandler(SimpleHTTPRequestHandler):
-        ifc_path = None
-        _lock = threading.Lock()
+`set_ifc_path(path)` incrementa el contador de versión. El JS detecta el cambio en el siguiente ciclo de polling y solicita el nuevo IFC.
 
-        @classmethod
-        def set_ifc_path(cls, path):
-            with cls._lock:
-                cls.ifc_path = path
-    ```
+`pop_pending_transfer()` extrae y devuelve la primera transferencia de la cola (o `None`). Se llama desde `IfcViewerDock._poll_transfers()` en el hilo Qt principal.
 
-- **Puerto**: Se asignará un puerto libre automáticamente mediante `socket.socket` (`bind(('', 0))`) para evitar conflictos con otros servicios.
-- **URL de acceso**: `http://localhost:[puerto]/index.html` para el visor y `http://localhost:[puerto]/modelo.ifc` para la carga del modelo.
-
-#### C. Capa de Visualización (Frontend JavaScript con Adaptador) ⭐ **MODIFICADO**
-- **Arquitectura interna del frontend**:
-    1.  **`index.html`**: Punto de entrada. Carga un orquestador (`main.js`) y, mediante un parámetro `?engine=`, carga el adaptador correspondiente.
-    2.  **`main.js` (Core)**: Lógica común del plugin. Obtiene la instancia del adaptador desde `window.ViewerAdapter` y gestiona eventos de QGIS.
-    3.  **`adapters/` (Carpeta de adaptadores)**: Contiene implementaciones concretas que cumplen con una interfaz estándar.
-        - `adapter.thatopen.js`: Implementa la API usando **That Open Engine** (antiguo IFC.js).
-        - `adapter.xeokit.js`: Implementa la API usando **xeokit** (para modelos pesados, opcional).
-- **Interfaz del Adaptador (API estándar)**:
-    Se define un contrato JavaScript global que el plugin utiliza para hablar con el visor, sin importar la librería subyacente.
-    ```javascript
-    window.ViewerAdapter = {
-        init(containerId, options) { /* Inicializa la escena 3D */ },
-        loadModel(url) { /* Carga el IFC desde la URL (fetch) */ },
-        highlightElement(id) { /* Resalta un elemento por su ID */ },
-        setCamera(position, target) { /* Mueve la cámara */ },
-        destroy() { /* Limpia recursos (renderer, geometrías) */ }
-    };
-    ```
-- **Selección dinámica**: El plugin puede elegir qué adaptador cargar mediante un parámetro en la URL (ej. `?engine=xeokit`) o leyendo una configuración de QGIS (`QgsSettings`). El adaptador por defecto será **That Open Engine**.
-
-#### D. Capa de Gestión de Datos
-- **Ubicación del IFC**: Ruta absoluta elegida por el usuario. El servidor solo lee el archivo; no se generan copias ni archivos temporales pesados.
-- **Persistencia**: La ruta del último IFC cargado se almacenará en los settings de QGIS (`QgsSettings`) para recordarla entre sesiones.
+**Thread-safety:** un `threading.Lock` protege `_ifc_path`, `_version` y `_pending_transfers`, ya que el hilo del servidor HTTP y el hilo principal de QGIS acceden concurrentemente.
 
 ---
 
-### 4. Alcance Funcional (Incluido)
+### `IfcViewerDock` — `viewer.py`
 
-| Funcionalidad | Estado | Nota |
-| :--- | :--- | :--- |
-| Carga de archivos IFC desde el disco local | ✅ Incluido | Mediante `QFileDialog` |
-| Visualización 3D interactiva (zoom, rotación, desplazamiento) | ✅ Incluido | Vía adaptador (That Open Engine por defecto) |
-| Herramientas de medición y planos de corte | ✅ Incluido | Depende del adaptador concreto |
-| Panel acoplable dentro de QGIS | ✅ Incluido | `QDockWidget` |
-| Funcionamiento offline del modelo IFC | ✅ Incluido | El archivo IFC se sirve desde disco local |
-| Librería de renderizado vía CDN | ✅ Incluido | That Open Engine y Three.js cargados desde CDN (requiere conexión a internet) |
-| Sin duplicación de archivos | ✅ Incluido | Lectura directa desde ruta original |
-| Cambio de librería visora sin modificar Python | ✅ Incluido | Basta con cambiar el adaptador JS cargado |
-| Carga concurrente y rápida de recursos | ✅ Incluido | Gracias a `ThreadingHTTPServer` |
-| Cierre limpio del servidor al salir de QGIS | ✅ Incluido | `.shutdown()` en `unload()` |
+Gestiona el ciclo de vida del subproceso y la integración con el layout del dock.
 
----
+**Atributos clave:**
 
-### 6. Dependencias Técnicas
+| Atributo | Tipo | Descripción |
+|---|---|---|
+| `_proc` | `QProcess \| None` | Proceso del subproceso visor |
+| `_http_server` | `IfcHttpServer` | Servidor HTTP embebido |
+| `_on_transfer` | `Callable[[dict], None] \| None` | Callback invocado al recibir una transferencia BIM→GIS |
+| `_transfer_timer` | `QTimer` | Timer a 250 ms que hace polling de `_http_server.pop_pending_transfer()` |
+| `_source_label` | `QLabel` | Muestra la ruta IFC activa |
+| `_status_label` | `QLabel` | Estado del subproceso (arrancando / activo / detenido) |
 
-- **QGIS**: 3.28 LTS y  superior 4.0 (por `QWebEngineView` estable y Python 3.9+).
-- **Python**: Módulos nativos (`http.server.ThreadingHTTPServer`, `socket`, `threading`, `os`). Sin dependencias externas para el servidor.
-- **JavaScript (Frontend)**:
-    - **Adaptador por defecto (That Open Engine)**: Cargado desde CDN. **Requiere conexión a internet.** URLs de referencia: `https://cdn.jsdelivr.net/npm/web-ifc` y paquetes `@thatopen/components`.
-    - **Adaptador alternativo (xeokit)**: Opcional; cargado desde CDN o empaquetado localmente bajo demanda.
-    - **Prouesta de Estructura de archivos n**:
-        ```
-        
-           ├── web_visor/
-           │   ├── index.html
-           │   ├── main.js (orquestador)
-           │   ├── adapters/
-           │   │   ├── adapter.thatopen.js
-           │   │   └── adapter.xeokit.js (opcional)
-           │   └── css/
-           └── resources/
-        ```
-- **Hardware**: Tarjeta gráfica con soporte para WebGL (requisito de Three.js).
+**Ciclo de vida del subproceso:**
 
----
+```
+__init__(on_transfer)
+  ├── IfcHttpServer.start()              ← servidor HTTP en hilo demonio
+  ├── QTimer(250 ms) → _poll_transfers() ← canal inverso BIM→GIS
+  └── _launch_subprocess()
+        └── QProcess.start(python3.exe, [webviewer_app.py, puerto, url])
 
-### 7. Plan de Desarrollo Sugerido (Hitos)
+QProcess.readyReadStandardOutput → _on_proc_stdout()
+  └── línea "READY:<win_id>" → _status_label.setText("IFC viewer window open …")
+        (el subproceso muestra su propia ventana flotante QWebEngineView)
 
-1. **Hito 1**: Generar la estructura del plugin con Plugin Builder 3. Crear el `QDockWidget` y añadir un `QWebEngineView` funcional que cargue una página HTML local.
-2. **Hito 2**: Implementar el servidor `ThreadingHTTPServer` embebido con el handler personalizado (incluyendo el `Lock` para la ruta) y verificar que sirve archivos estáticos.
-3. **Hito 3**: Diseñar e implementar la **API del Adaptador** en JavaScript (`main.js` y contrato de la interfaz).
-4. **Hito 4**: Implementar el adaptador concreto para **That Open Engine** y probar la carga del IFC desde el servidor mediante `fetch('/modelo.ifc')`.
-5. **Hito 5**: Integrar el selector de archivos (`QFileDialog`) en QGIS, conectar la señal de selección para actualizar `CustomHandler.ifc_path` y refrescar el visor.
-6. **Hito 6** *(Ampliación)*: Implementar el adaptador para **xeokit** para validar la flexibilidad del sistema y tener una alternativa para modelos pesados.
-7. **Hito 7**: Pruebas de rendimiento, optimización de memoria (destrucción correcta del renderizador) y depuración de cierres de hilos.
+open_reference(reference)
+  ├── _http_server.set_ifc_path(local_path)  ← incrementa versión JSON
+  └── si _proc is None → _launch_subprocess()  ← reinicio bajo demanda
+
+QTimer.timeout → _poll_transfers()
+  ├── _http_server.pop_pending_transfer()  → dict | None
+  └── si hay transferencia → on_transfer(data)  ← hilo Qt principal
+
+QProcess.finished → _on_proc_finished()
+  └── self._proc = None
+
+destroy()  (llamado en GeoIfcAssetsPlugin.unload)
+  ├── _stop_subprocess()
+  │     └── proc.kill() + waitForFinished(2000)
+  └── _http_server.stop()
+```
 
 ---
 
+### `webviewer_app.py`
+
+Script de entrada del subproceso. **No importa nada de `qgis.*`** (requeriría un contexto QGIS activo). Importa PyQt6 o PyQt5 directamente según disponibilidad:
+
+```python
+try:
+    from PyQt6.QtWebEngineWidgets import QWebEngineView
+    ...
+except ImportError:
+    from PyQt5.QtWebEngineWidgets import QWebEngineView
+    ...
+```
+
+**Secuencia de arranque:**
+
+```
+1. QApplication(sys.argv[:1])
+2. app.setQuitOnLastWindowClosed(False)
+3. view = _ViewerWindow()          ← QWebEngineView con closeEvent override
+4. view.setWindowTitle("GeoIFC Assets — IFC Viewer")
+5. view.resize(1280, 800)
+6. view.load(QUrl(viewer_url))
+7. view.show()                     ← ventana flotante independiente (no embebida)
+8. win_id = int(view.winId())
+9. print(f"READY:{win_id}")        ← notifica al proceso QGIS (actualiza _status_label)
+10. view.page().renderProcessTerminated.connect(_on_render_crash)
+11. [Windows] stdin polling ignorado (select no disponible)
+12. app.exec()
+```
+
+La ventana QWebEngineView aparece como ventana flotante independiente del dock QGIS. El dock sólo gestiona el proceso y sirve los assets IFC vía HTTP; la UI 3D vive en el subproceso.
+
+**Gestión de crashes del renderer:**
+
+```python
+def _on_render_process_terminated(status, exit_code):
+    view.load(QUrl(url))  # Recarga la página, Chromium reinicia el renderer
+```
+
+`setQuitOnLastWindowClosed(False)` evita que ese crash temporal (que puede cerrar y reabrir la `QWebEngineView` internamente) termine el subproceso.
+
+---
+
+## Componentes TypeScript / JavaScript
+
+### `viewer.ts` (compilado a `webviewer/assets/index.js` por Vite)
+
+**Inicialización defensiva de WebGL:**
+
+El renderer Three.js se inicializa con tres niveles de fallback para maximizar la compatibilidad:
+
+```typescript
+try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+} catch {
+    try {
+        renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "low-power" });
+    } catch {
+        const softCtx =
+            canvas.getContext("webgl2", { failIfMajorPerformanceCaveat: false }) ||
+            canvas.getContext("webgl",  { failIfMajorPerformanceCaveat: false });
+        renderer = new THREE.WebGLRenderer({ canvas, context: softCtx, antialias: false });
+    }
+}
+```
+
+El tercer intento con `failIfMajorPerformanceCaveat: false` activa SwiftShader cuando las flags Chromium están configuradas, sin lanzar una excepción aunque el rendimiento sea software.
+
+**`window.GeoIfcViewer` se define antes de inicializar WebGL** para que el polling pueda encontrarlo aunque la inicialización falle. Si WebGL falla, `openReference()` muestra el error en lugar de intentar renderizar.
+
+**Polling `/current.json`:**
+
+```typescript
+let _pollVersion = -1;
+
+async function pollCurrentIfc() {
+    const data = await fetch("/current.json").then(r => r.json());
+    if (data.version !== _pollVersion) {
+        _pollVersion = data.version;
+        if (data.ifc_url) await window.GeoIfcViewer.openReference({ modelUrl: data.ifc_url, ... });
+        else clearModel();
+    }
+}
+
+// Delay inicial 800 ms para que WASM inicialice, luego cada 1.5 s
+setTimeout(() => { void pollCurrentIfc(); setInterval(() => void pollCurrentIfc(), 1500); }, 800);
+```
+
+**Compatibilidad web-ifc 0.0.77:**
+
+En esa versión algunos objetos (`FlatMesh`, `IfcGeometry`) son stack-allocated y no exponen `delete()`. Se usa optional chaining:
+
+```typescript
+geometry.delete?.();
+flatMesh.delete?.();
+```
+
+---
+
+## Flujo de selección de feature → visor
+
+```
+1. Usuario selecciona feature en QGIS
+2. plugin._select_feature(layer_id, feature_id)
+3. feature_reader.read_from_feature(layer, feature)
+        → IfcReference(kind=URL, value="D:\...\building.ifc")
+4. viewer_dock.open_reference(reference)
+5. _local_path_from_reference(reference)
+        → "D:\...\building.ifc"  (ruta local aunque kind=URL)
+6. http_server.set_ifc_path("D:\...\building.ifc")
+        → _version += 1
+7. [si _proc is None] → _launch_subprocess()
+
+--- Polling del subproceso (≤1.5 s) ---
+
+8. fetch /current.json → {"version": 2, "ifc_url": "/modelo.ifc"}
+9. version cambia → openReference({modelUrl: "/modelo.ifc"})
+10. fetch /modelo.ifc → stream del fichero IFC desde disco
+11. web-ifc parsea el IFC (WASM)
+12. Three.js renderiza la geometría
+```
+
+---
+
+## Detección de rutas locales en `ifc_url`
+
+El campo `ifc_url` puede contener tanto URLs remotas como rutas locales de fichero (comportamiento habitual en capas de prueba). La función `_local_path_from_reference()` distingue ambos casos:
+
+```python
+def _local_path_from_reference(reference: IfcReference) -> str:
+    value = reference.value
+    if value.startswith("http://") or value.startswith("https://"):
+        return ""   # URL remota: no soportada todavía
+    return value    # Ruta local: se sirve vía /modelo.ifc
+```
+
+Las URLs remotas se registran como advertencia y el servidor no expone `/modelo.ifc`; el visor muestra "Select a feature in QGIS to load an IFC."
+
+---
+
+## Dependencias técnicas
+
+| Componente | Tecnología | Notas |
+|---|---|---|
+| Gestión subprocess | `QProcess` (qgis.PyQt.QtCore) | Sin `subprocess.Popen`; captura stdout/stderr por señales Qt |
+| Ventana visor | `QWebEngineView` en subproceso (ventana flotante) | Evita conflicto con Chromium ya inicializado por QGIS |
+| Canal inverso | `POST /transfer` + `QTimer` 250 ms | Hilo HTTP → cola → hilo Qt principal |
+| Servidor HTTP | `http.server.ThreadingHTTPServer` | Nativo Python, sin dependencias externas |
+| Runtime JS IFC | `web-ifc` 0.0.77 (WASM, bundleado offline) | No requiere conexión a internet |
+| Renderizado 3D | `Three.js` r177+ (bundleado offline) | Con fallback SwiftShader |
+| Build frontend | Vite + TypeScript | `npm run build:webviewer` → `webviewer/assets/index.js` |
+| QGIS compatible | QGIS 3 LTR + QGIS 4.x | PyQt5 / PyQt6 via bloque try/except en webviewer_app.py |
+
+---
+
+## Árbol de elementos IFC (Fase A)
+
+Implementado en `viewer.ts`. Permite explorar los elementos del modelo agrupados por categoría IFC, hacer zoom al seleccionar un elemento y consultar sus atributos y PropertySets.
+
+### Estructura del panel lateral
+
+El panel lateral (`<aside class="viewer-panel">`) está organizado en cuatro zonas con `display: flex; flex-direction: column`:
+
+```
+.panel-info     — fuente activa (source-name)
+.panel-tree     — árbol de categorías (flex: 1, overflow-y: auto)
+.panel-props    — panel de propiedades (max-height: 45%, hidden por defecto)
+.panel-status   — estado actual (source-status)
+```
+
+### Índice de PropertySets (`buildPropSetIndex`)
+
+Se construye **una sola vez** cuando se carga el modelo, antes del árbol de elementos. Recorre todas las entidades `IFCRELDEFINESBYPROPERTIES` del modelo con `GetLineIDsWithType` (devuelve `Vector<number>` con `.size()/.get(i)`) y construye un mapa inverso:
+
+```typescript
+propSetIndex: Map<expressId, number[]>  // expressId del elemento → lista de expressIds de PropertySets
+```
+
+Esto evita tener que recorrer todas las relaciones en cada clic de elemento (~O(1) por clic en lugar de O(N_relations)).
+
+Los valores REF de `RelatedObjects` son objetos `{ type: 5, value: expressID }`. La función `resolveRef` extrae el `value` numérico de forma defensiva.
+
+### Índice de elementos (`buildElementIndex`)
+
+Recorre los meshes ya en escena (almacenados en `modelGroup`) para extraer los `expressID` únicos. Para cada uno llama a `api.GetLine(modelId, expressId, false)` y extrae:
+
+- `Name` — mediante `extractAttrValue` que maneja objetos web-ifc `{ type, value }`
+- `type` — código numérico de la clase IFC; convertido a string de categoría mediante `CATEGORY_NAMES`
+
+Los elementos se agrupan en un `Map<categoria, IFCElement[]>` ordenado alfabéticamente por categoría y por nombre dentro de cada categoría.
+
+**Categorías reconocidas (28 tipos IFC mapeados):**
+
+| Categoria | Tipos IFC incluidos |
+|---|---|
+| Walls | IFCWALL, IFCWALLSTANDARDCASE |
+| Doors | IFCDOOR, IFCDOORSTANDARDCASE |
+| Windows | IFCWINDOW, IFCWINDOWSTANDARDCASE |
+| Slabs / Floors | IFCSLAB, IFCPLATE |
+| Beams | IFCBEAM |
+| Columns | IFCCOLUMN, IFCCOLUMNSTANDARDCASE |
+| Members / Frames | IFCMEMBER |
+| Roofs | IFCROOF |
+| Stairs | IFCSTAIR, IFCSTAIRFLIGHT |
+| Ramps | IFCRAMP |
+| Railings | IFCRAILING |
+| Coverings | IFCCOVERING |
+| Curtain Walls | IFCCURTAINWALL |
+| Furniture | IFCFURNISHINGELEMENT |
+| Spaces | IFCSPACE |
+| Storeys | IFCBUILDINGSTOREY |
+| Foundations | IFCPILE, IFCFOOTING |
+| Generic Elements | IFCBUILDINGELEMENTPROXY |
+| MEP (varios) | IFCFLOW*, IFCDUCT*, IFCPIPE* |
+| Other | cualquier tipo no mapeado |
+
+### Renderizado del árbol (`renderTree`)
+
+El árbol se genera como fragmento DOM con elementos `<details class="tree-cat" open>` nativos de HTML. No se usa ningún framework:
+
+```html
+<details class="tree-cat" open>
+  <summary>
+    <span class="cat-label">Walls</span>
+    <span class="cat-count">12</span>
+  </summary>
+  <ul class="tree-list">
+    <li><button class="tree-item" data-eid="42" title="...">Basic Wall:Interior</button></li>
+    ...
+  </ul>
+</details>
+```
+
+El uso de `<details>` nativo permite colapsar/expandir categorías sin JavaScript adicional.
+
+### Selección de elemento (`selectElement`)
+
+Clic en un `<button class="tree-item">`:
+
+1. Si el elemento ya está seleccionado → deselecciona (toggle), restaura materiales, oculta propiedades.
+2. Marca `selected` en el botón y hace `scrollIntoView`.
+3. Llama a `zoomToElement(expressId)` → calcula bounding box de los meshes con ese `expressID` y llama a `fitCameraToBox`.
+4. Llama a `highlightElement(expressId)` → guarda materiales originales en `savedMaterials: Map<Mesh, Material>` y asigna `HIGHLIGHT_MAT` (naranja/amber, `MeshStandardMaterial`).
+5. Llama a `renderProps` con los atributos directos y PropertySets del elemento.
+
+`clearHighlight()` restaura todos los materiales desde `savedMaterials` y limpia el mapa. Se llama siempre antes de `clearModel()` para no disponer meshes con materiales en memoria.
+
+### Lectura de atributos directos (`readDirectAttrs`)
+
+`api.GetLine(modelId, expressId, false)` devuelve el objeto IFC como un diccionario JavaScript. Se filtran:
+
+- Claves técnicas de estructura IFC (`expressID`, `type`, `OwnerHistory`, `ObjectPlacement`, `Representation`, relaciones inversas).
+- Valores de tipo REF (`{ type: 5, value: N }`) — son apuntadores a otras entidades, no mostrables directamente.
+- Arrays (conjuntos de relaciones).
+
+Los valores válidos son strings, números o booleanos envueltos en `{ type, value }`. La función `extractAttrValue` los desenvuelve de forma defensiva.
+
+### Lectura de PropertySets (`readPropertySets`)
+
+Usa el índice preconstruido (`propSetIndex`) para obtener los IDs de PropertySets del elemento. Para cada PropertySet:
+
+1. `api.GetLine(modelId, psId, false)` → extrae nombre y lista de propiedades (`HasProperties` o `Quantities`).
+2. Para cada propiedad (`resolveRefArray → propId`):
+   - `api.GetLine(modelId, propId, false)` → `IfcPropertySingleValue.NominalValue` o campos `*Value` de `IfcQuantity`.
+   - `extractAttrValue` desenvuelve el valor final.
+
+Solo se incluyen PropertySets que tengan al menos una propiedad con valor legible.
+
+---
+
+## Árbol espacial y selección por clic (Fase B)
+
+### Selector de vista
+
+La barra de modo (`#tree-mode-bar`) muestra dos botones: **Category** (vista plana por categoría, siempre disponible) y **Spatial** (jerarquía espacial, habilitado solo si el modelo tiene estructura espacial IFC). El visor activa Spatial automáticamente si la estructura está disponible.
+
+### Árbol espacial (`buildSpatialTree`)
+
+Se construye recorriendo dos tipos de relaciones:
+
+| Relación | Campo origen | Campo destino | Significado |
+|---|---|---|---|
+| `IFCRELAGGREGATES` | `RelatingObject` | `RelatedObjects[]` | Descomposición espacial (Proyecto → Sitio → Edificio → Planta → Espacio) |
+| `IFCRELCONTAINEDINSPATIALSTRUCTURE` | `RelatingStructure` | `RelatedElements[]` | Elementos físicos contenidos en cada planta o espacio |
+
+El árbol se modela como `SpatialNode { expressId, name, typeLabel, typeCss, children[], elements[], totalCount }`. `totalCount` es recursivo: incluye los elementos de todos los sub-nodos.
+
+Los datos de nombre y categoría de cada elemento se reutilizan desde el índice `elementsByCategory` (ya construido en Fase A), sin llamadas adicionales a `api.GetLine`.
+
+El renderizado usa `<details class="tree-cat snode-{type}">` anidados. Los nodos de tipo `storey` están abiertos por defecto; los de tipo `space` están cerrados. Cada tipo recibe un color de fondo y etiqueta distintivos mediante CSS (`snode-project`, `snode-site`, `snode-building`, `snode-storey`, `snode-space`).
+
+### Selección por clic en la escena 3D
+
+`THREE.Raycaster` singleton (evita instanciación por evento). El listener de `mousedown` registra la posición inicial del ratón; el listener de `click` descarta el evento si el desplazamiento supera 4 px (indica arrastre de órbita/pan).
+
+Cuando se detecta un clic real:
+1. Se convierte la posición del ratón a coordenadas NDC.
+2. `raycaster.intersectObjects(meshes, false)` devuelve las intersecciones ordenadas por distancia.
+3. El primer hit proporciona el `expressID` del mesh → `selectElement(expressId)`.
+4. `selectElement` abre los `<details>` ancestros en el árbol activo y hace scroll al botón.
+
+---
+
+## Transferencia BIM→GIS (Fase C)
+
+El panel de propiedades añade un botón `→` a cada fila al pasar el ratón. Al hacer clic:
+
+1. El JS llama a `transferProp(pset, key, value, btn)`, que hace `POST /transfer` al mismo origen HTTP.
+2. `IfcHttpServer._receive_transfer` deserializa el cuerpo JSON y lo encola en `_pending_transfers` (protegido con `threading.Lock`).
+3. Un `QTimer` a 250 ms en `IfcViewerDock._poll_transfers()` consume la cola en el hilo Qt principal.
+4. Se invoca el callback `on_transfer` registrado en `GeoIfcAssetsPlugin._handle_transfer`.
+5. `_show_transfer_dialog` abre un `QDialog` con un `QComboBox` editable que lista los campos del layer activo. Si se escribe un nombre nuevo, se crea el campo (`QgsField + layer.addAttribute`). El valor se escribe con `layer.changeAttributeValue`.
+
+El botón queda verde (`prop-sent`) al completarse correctamente, o rojo (`prop-error`) si el POST falla.
+
+---
+
+## Selector de plantas y vista 2D (Fase D)
+
+### Barra de filtro por planta (`storeyBarEl`)
+
+Tras cargar el modelo, si el IFC contiene al menos un `IfcBuildingStorey`, aparece una barra
+horizontal de botones entre el selector Category/Spatial y el árbol de elementos. Contiene un
+botón **All** y un botón por cada planta detectada.
+
+El índice se construye con `buildStoreyIndex(spatialRoot)`, que recorre recursivamente el árbol
+espacial ya construido en Fase B. Para cada nodo de tipo `storey` asigna en
+`elementToStorey: Map<expressId, storeyExpressId>` todos los elementos de la planta (incluyendo
+los de sub-espacios hijos). La variable `storeys: SpatialNode[]` guarda las plantas en el orden
+del árbol.
+
+Al pulsar un botón de planta:
+
+1. `filterByStorey(storeyId)` recorre `modelGroup.traverse()` y aplica `mesh.visible` según si el
+   `expressId` del mesh tiene ese `storeyId` en `elementToStorey`.
+2. Se calcula la bounding box de los meshes visibles con `getVisibleBoundingBox()`.
+3. Si está activo el modo 2D → `fitCamera2DToBox(box)`; si no → `fitCameraToBox(box)`.
+4. `updateStoreyBarUI()` sincroniza la clase `active` de los botones.
+
+Al pulsar **All** → `filterByStorey(null)` restaura `mesh.visible = true` en todos los meshes.
+
+### Vista cenital 2D (`btn2DView`)
+
+Botón posicionado en la esquina superior derecha del canvas (`.view-toggle-btn`, posición absoluta
+dentro de `.viewport`). Visible solo cuando hay geometría cargada.
+
+**Entrar en modo 2D (`switchTo2DView`):**
+1. Guarda posición y target actuales en `saved3DCamera`.
+2. Cambia `camera.up` a `(0, 0, −1)` para evitar la singularidad gimbal en vista cenital pura.
+3. Llama a `fitCamera2DToBox` con la bounding box de elementos visibles:
+   - Target = centro XZ de la bounding box.
+   - Posición = centro + `maxExtent * 2 + elevHeight * 0.5 + 1` en el eje Y.
+4. Desactiva `controls.enableRotate`, activa `controls.screenSpacePanning`.
+5. Botón muestra **3D** con fondo verde (clase `active-2d`).
+
+**Salir del modo 2D (`switchTo3DView`):**
+1. Restaura `camera.up` a `(0, 1, 0)`.
+2. Restaura posición y target desde `saved3DCamera`.
+3. Reactiva `controls.enableRotate`, desactiva `controls.screenSpacePanning`.
+4. Botón vuelve a mostrar **2D**.
+
+Al limpiar el modelo (`clearModel`), `reset2DState()` restaura el estado 3D sin animación si la
+vista 2D estaba activa.
+
+Ver especificación completa en `docs/visor_selector_plantas.md`.
+
+---
+
+## Limitaciones conocidas
+
+- **HU-03 (selección de elemento IFC → QGIS):** Parcialmente implementada mediante POST `/transfer`. El canal inverso está activo para transferencia de propiedades; la selección de geometría IFC → highlight en capa GIS sigue pendiente.
+- **URLs remotas:** El campo `ifc_url` con valor `http://` o `https://` muestra advertencia; el IFC no se carga. Pendiente de implementación.
+- **Latencia:** El polling introduce un retraso de hasta 1,5 s entre selección de feature y actualización del visor.
+- **Arranque inicial:** El subproceso tarda ~1-2 s en arrancar (Chromium + WASM). Durante ese tiempo el dock muestra el placeholder "Starting IFC viewer subprocess…".
+- **Rendimiento en modelos grandes:** `buildElementIndex` hace una llamada `api.GetLine` por cada elemento con geometría. En modelos con >5.000 elementos únicos, la indexación puede añadir ~1-3 s tras la carga de geometría.
+- **Elementos sin estructura espacial:** elementos con geometría pero sin `IFCRELCONTAINEDINSPATIALSTRUCTURE` no aparecen en el árbol Spatial. Siempre están disponibles en la vista Category.

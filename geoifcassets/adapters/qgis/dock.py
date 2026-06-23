@@ -35,6 +35,8 @@ class GeoIfcAssetsDock:
         on_layer_selected: Callable[[str], list[FeatureListItem]],
         on_feature_selected: Callable[[str, int], None],
         on_open_viewer: Callable[[], None],
+        viewer_widget: Any | None = None,
+        on_generate_footprint: Callable[[], None] | None = None,
     ) -> None:
         from qgis.PyQt.QtWidgets import (
             QComboBox,
@@ -62,13 +64,15 @@ class GeoIfcAssetsDock:
         content = QWidget()
         layout = QVBoxLayout(content)
 
-        tabs = QTabWidget()
+        self._tabs = QTabWidget()
+        tabs = self._tabs
         layer_tab = QWidget()
         layer_layout = QVBoxLayout(layer_tab)
         properties_tab = QWidget()
         properties_layout = QVBoxLayout(properties_tab)
         viewer_tab = QWidget()
         viewer_layout = QVBoxLayout(viewer_tab)
+        viewer_layout.setContentsMargins(0, 0, 0, 0)
 
         self._layer_combo = QComboBox()
         self._layer_combo.currentIndexChanged.connect(self._select_layer_row)
@@ -109,13 +113,30 @@ class GeoIfcAssetsDock:
         self._user_log.setPlaceholderText(tr("GeoIfcAssets", "Workflow messages"))
         properties_layout.addWidget(self._user_log)
 
-        buttons_layout = QHBoxLayout()
         self._open_button = QPushButton(tr("GeoIfcAssets", "Open IFC viewer"))
         self._open_button.setEnabled(False)
         self._open_button.clicked.connect(on_open_viewer)
-        buttons_layout.addWidget(self._open_button)
-        viewer_layout.addLayout(buttons_layout)
-        viewer_layout.addStretch(1)
+        layer_layout.addWidget(self._open_button)
+
+        if viewer_widget is not None:
+            viewer_layout.addWidget(viewer_widget)
+        else:
+            viewer_layout.addStretch(1)
+
+        footprint_bar = QWidget()
+        footprint_bar_layout = QHBoxLayout(footprint_bar)
+        footprint_bar_layout.setContentsMargins(4, 4, 4, 4)
+        self._storey_label = QLabel(tr("GeoIfcAssets", "No storey selected"))
+        self._footprint_btn = QPushButton(tr("GeoIfcAssets", "→ QGIS layer"))
+        self._footprint_btn.setEnabled(False)
+        self._footprint_btn.setToolTip(
+            tr("GeoIfcAssets", "Generate floor footprint as a temporary QGIS layer")
+        )
+        if on_generate_footprint is not None:
+            self._footprint_btn.clicked.connect(on_generate_footprint)
+        footprint_bar_layout.addWidget(self._storey_label, 1)
+        footprint_bar_layout.addWidget(self._footprint_btn)
+        viewer_layout.addWidget(footprint_bar)
 
         tabs.addTab(layer_tab, tr("GeoIfcAssets", "Layer/Features"))
         tabs.addTab(properties_tab, tr("GeoIfcAssets", "Properties"))
@@ -128,12 +149,26 @@ class GeoIfcAssetsDock:
     def qwidget(self) -> Any:
         return self.widget
 
+    def switch_to_viewer_tab(self) -> None:
+        self._tabs.setCurrentIndex(2)
+
     def set_status(self, message: str, can_open_viewer: bool = False) -> None:
         self._status_label.setText(message)
         self._open_button.setEnabled(can_open_viewer)
 
     def add_user_log(self, message: str) -> None:
         self._user_log.append(message)
+
+    def set_active_storey(self, name: str | None) -> None:
+        """Update the footprint toolbar to reflect the currently selected storey."""
+        if name:
+            self._storey_label.setText(
+                tr("GeoIfcAssets", "Storey: {name}").format(name=name)
+            )
+            self._footprint_btn.setEnabled(True)
+        else:
+            self._storey_label.setText(tr("GeoIfcAssets", "No storey selected"))
+            self._footprint_btn.setEnabled(False)
 
     def refresh_layers(self) -> None:
         self._updating_ui = True
@@ -171,10 +206,7 @@ class GeoIfcAssetsDock:
             self._feature_table.setItem(
                 row, 2, self._table_item(feature.ifc_source)
             )
-        if features:
-            self._feature_table.selectRow(0)
         self._updating_ui = False
-        self._select_feature_row()
 
     def _select_feature_row(self) -> None:
         if self._updating_ui:

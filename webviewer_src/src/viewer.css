@@ -8,14 +8,19 @@ body {
   background: #f4f6f8;
   color: #17202a;
   font-family: Arial, sans-serif;
+  font-size: 13px;
 }
+
+/* ── Shell ─────────────────────────────────────────────────────────────────── */
 
 .viewer-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
+  grid-template-columns: minmax(0, 1fr) 270px;
   height: 100%;
   min-height: 320px;
 }
+
+/* ── Viewport (Three.js canvas) ────────────────────────────────────────────── */
 
 .viewport {
   position: relative;
@@ -43,29 +48,427 @@ body {
   font-size: 12px;
 }
 
+/* ── Side panel ────────────────────────────────────────────────────────────── */
+
 .viewer-panel {
-  display: grid;
-  align-content: start;
-  gap: 14px;
-  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: #ffffff;
   border-left: 1px solid #e0e6eb;
-  overflow-wrap: anywhere;
+}
+
+/* Info bar: source name */
+.panel-info {
+  flex-shrink: 0;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid #e8edf1;
 }
 
 .label {
   display: block;
   color: #5d6d7e;
   font-size: 11px;
+  font-weight: 600;
   text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 strong {
   display: block;
-  margin-top: 3px;
+  margin-top: 2px;
   font-size: 13px;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+
+/* Status bar: bottom */
+.panel-status {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-top: 1px solid #e8edf1;
+  color: #5d6d7e;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── View mode toggle bar ──────────────────────────────────────────────────── */
+
+.tree-mode-bar {
+  flex-shrink: 0;
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #e8edf1;
+  background: #f7f9fb;
+}
+
+.tree-mode-btn {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid #ccd7e0;
+  border-radius: 4px;
+  background: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  color: #5d6d7e;
+  cursor: pointer;
+}
+
+.tree-mode-btn:hover:not(:disabled) {
+  background: #edf3fb;
+  border-color: #2471a3;
+  color: #1a5276;
+}
+
+.tree-mode-btn.active {
+  background: #2471a3;
+  border-color: #2471a3;
+  color: #ffffff;
+}
+
+.tree-mode-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── Element tree ──────────────────────────────────────────────────────────── */
+
+.panel-tree {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 60px;
+}
+
+.panel-hint {
+  margin: 20px 12px;
+  color: #8898a9;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Category / spatial group (<details>) */
+.tree-cat {
+  border-bottom: 1px solid #f0f3f5;
+}
+
+.tree-cat > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 8px;
+  cursor: pointer;
+  user-select: none;
+  background: #f7f9fb;
+  font-size: 12px;
+  font-weight: 600;
+  color: #3d5166;
+  list-style: none;
+}
+
+.tree-cat > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tree-cat > summary::before {
+  content: "▶";
+  font-size: 9px;
+  color: #8898a9;
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+
+.tree-cat[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.cat-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cat-count {
+  flex-shrink: 0;
+  background: #dce8f5;
+  color: #1a5276;
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ── Spatial tree node type labels ────────────────────────────────────────── */
+
+.snode-type {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 3px;
+  padding: 1px 5px;
+  background: #e8edf1;
+  color: #5d6d7e;
+}
+
+.snode-project > summary { background: #ecf0f1; }
+.snode-project > summary .snode-type { background: #bdc3c7; color: #2c3e50; }
+
+.snode-site > summary { background: #eafaf1; }
+.snode-site > summary .snode-type { background: #a9dfbf; color: #1d6a39; }
+
+.snode-building > summary { background: #eaf2fb; }
+.snode-building > summary .snode-type { background: #aed6f1; color: #1a5276; }
+
+.snode-storey > summary { background: #f4f6f7; }
+.snode-storey > summary .snode-type { background: #ccd7e0; color: #2e4053; }
+
+.snode-space > summary { background: #fdfefe; }
+.snode-space > summary .snode-type { background: #d5dbdb; color: #555; }
+
+/* Nested spatial nodes are indented via left border */
+.snode-building,
+.snode-storey,
+.snode-space,
+.snode-other {
+  margin-left: 10px;
+  border-left: 2px solid #e8edf1;
+}
+
+/* Element list (<ul>) */
+.tree-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tree-list li {
+  margin: 0;
+  padding: 0;
+}
+
+/* Element button */
+.tree-item {
+  display: block;
+  width: 100%;
+  padding: 5px 12px 5px 22px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+  color: #2e4053;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-item:hover {
+  background: #edf3fb;
+  color: #1a5276;
+}
+
+.tree-item.selected {
+  background: #2471a3;
+  color: #ffffff;
+}
+
+/* ── Properties panel ──────────────────────────────────────────────────────── */
+
+.panel-props {
+  flex-shrink: 0;
+  min-height: 60px;
+  max-height: 45%;
+  overflow-y: auto;
+  border-top: 2px solid #2471a3;
+  background: #f9fbfd;
+}
+
+.props-header {
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid #e0e6eb;
+}
+
+.props-title {
+  display: block;
+  font-weight: 700;
+  font-size: 12px;
+  color: #1a5276;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.props-meta {
+  display: block;
+  font-size: 11px;
+  color: #8898a9;
+  margin-top: 1px;
+}
+
+.props-body {
+  padding: 4px 0 8px;
+}
+
+.pset-block {
+  margin-top: 4px;
+}
+
+.pset-name {
+  padding: 4px 12px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #5d6d7e;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #edf3fb;
+}
+
+.prop-row {
+  display: flex;
+  gap: 6px;
+  padding: 3px 12px;
+  font-size: 11px;
+  border-bottom: 1px solid #f0f4f8;
+}
+
+.prop-row:last-child {
+  border-bottom: none;
+}
+
+.prop-key {
+  flex-shrink: 0;
+  width: 110px;
+  color: #5d6d7e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prop-val {
+  flex: 1;
+  color: #17202a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.prop-transfer {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border: 1px solid #aed6f1;
+  border-radius: 3px;
+  background: #eaf2fb;
+  color: #1a5276;
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.prop-row:hover .prop-transfer {
+  opacity: 1;
+}
+
+.prop-transfer:hover {
+  background: #2471a3;
+  border-color: #2471a3;
+  color: #ffffff;
+}
+
+.prop-transfer.prop-sent {
+  border-color: #a9dfbf;
+  background: #eafaf1;
+  color: #1d6a39;
+  cursor: default;
+}
+
+.prop-transfer.prop-error {
+  border-color: #f5b7b1;
+  background: #fdedec;
+  color: #a93226;
+  opacity: 1;
+}
+
+/* ── Storey filter bar ─────────────────────────────────────────────────────── */
+
+.storey-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 5px 8px;
+  border-bottom: 1px solid #e8edf1;
+  background: #f0f4f8;
+  overflow-x: auto;
+}
+
+.storey-btn {
+  padding: 3px 8px;
+  border: 1px solid #ccd7e0;
+  border-radius: 3px;
+  background: #ffffff;
+  font-size: 11px;
+  color: #2e4053;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+  flex-shrink: 0;
+}
+
+.storey-btn:hover {
+  background: #edf3fb;
+  border-color: #2471a3;
+  color: #1a5276;
+}
+
+.storey-btn.active {
+  background: #1a5276;
+  border-color: #1a5276;
+  color: #ffffff;
+}
+
+/* ── 2D / 3D view toggle ───────────────────────────────────────────────────── */
+
+.view-toggle-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px 10px;
+  border: 1px solid #cfd7df;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  font-weight: 700;
+  color: #2e4053;
+  cursor: pointer;
+  z-index: 10;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.view-toggle-btn:hover {
+  background: #2471a3;
+  color: #ffffff;
+  border-color: #2471a3;
+}
+
+.view-toggle-btn.active-2d {
+  background: #1d6a39;
+  color: #ffffff;
+  border-color: #1d6a39;
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────────── */
 
 @media (max-width: 760px) {
   .viewer-shell {
@@ -76,5 +479,9 @@ strong {
   .viewport {
     border-right: 0;
     border-bottom: 1px solid #cfd7df;
+  }
+
+  .viewer-panel {
+    max-height: 280px;
   }
 }

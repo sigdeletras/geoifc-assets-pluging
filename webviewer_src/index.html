@@ -7,22 +7,28 @@
   </head>
   <body>
     <main class="viewer-shell">
-      <section class="viewport" aria-label="IFC viewer">
+      <section class="viewport" aria-label="IFC 3D viewer">
         <canvas id="viewer-canvas"></canvas>
         <div class="viewport-status" id="viewport-status">Waiting for IFC source</div>
+        <button class="view-toggle-btn" id="btn-view-2d" hidden title="Switch to 2D top-down view">2D</button>
       </section>
-      <aside class="viewer-panel">
-        <div>
+      <aside class="viewer-panel" aria-label="Element browser">
+        <div class="panel-info">
           <span class="label">Source</span>
           <strong id="source-name">No IFC selected</strong>
+          <span id="source-kind" hidden></span>
         </div>
-        <div>
-          <span class="label">Status</span>
-          <strong id="source-status">Idle</strong>
+        <div class="tree-mode-bar" id="tree-mode-bar" hidden>
+          <button class="tree-mode-btn active" id="btn-mode-cat" title="Group by IFC category">Category</button>
+          <button class="tree-mode-btn" id="btn-mode-spatial" title="Browse spatial structure (Project → Site → Building → Storey → Elements)" disabled>Spatial</button>
         </div>
-        <div>
-          <span class="label">Format</span>
-          <strong id="source-kind">-</strong>
+        <div class="storey-bar" id="storey-bar" hidden aria-label="Floor / storey filter"></div>
+        <div id="element-tree" class="panel-tree" role="tree" aria-label="IFC elements">
+          <p class="panel-hint">Load an IFC model to browse elements.</p>
+        </div>
+        <div id="element-props" class="panel-props" hidden aria-label="Element properties"></div>
+        <div class="panel-status">
+          <span id="source-status">Idle</span>
         </div>
       </aside>
     </main>

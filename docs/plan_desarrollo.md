@@ -1,6 +1,6 @@
 # GeoIFC Assets
 
-## Plan de Desarrollo y Arquitectura Tecnica (v3.15)
+## Plan de Desarrollo y Arquitectura Tecnica (v3.16)
 
 ---
 
@@ -86,9 +86,11 @@ i18n
 
 ### Visor embebido
 
-* Qt WebEngine
-* QWebChannel
-* HTML / JavaScript
+* Qt WebEngine (en subproceso separado, no en proceso QGIS)
+* QProcess + stdout protocol (IPC QGIS ↔ subproceso)
+* ThreadingHTTPServer + polling `/current.json` (IPC visor ↔ QGIS)
+* HTML / TypeScript (bundle Vite offline, sin CDN)
+* web-ifc (WASM) + Three.js (WebGL con fallback SwiftShader)
 
 ### Calidad
 
@@ -396,16 +398,45 @@ Los perfiles sectoriales se deben desarrollar cuando existan:
 Responsable de:
 
 * apertura del IFC asociado al feature GIS seleccionado
-* renderizado 3D en visor embebido
-* navegacion del modelo
-* seleccion de entidades IFC
-* consulta de propiedades del elemento seleccionado
+* renderizado 3D en visor embebido dentro del dock
+* navegacion del modelo (orbita, zoom, pan)
+* actualizacion del modelo al cambiar feature seleccionado en QGIS
+* reinicio automatico del subproceso si este termina
+* exploracion de elementos por categoria IFC (arbol plano — Fase A)
+* exploracion por jerarquia espacial Proyecto → Sitio → Edificio → Planta → Espacio (arbol espacial — Fase B)
+* seleccion de elemento por clic en la escena 3D via ray-casting (Fase B)
+* zoom de camara al elemento seleccionado en el arbol o en la escena 3D
+* consulta de atributos directos y PropertySets del elemento seleccionado
+* transferencia de propiedades BIM a campos GIS via POST /transfer + QDialog (Fase C)
 
 Tecnologias:
 
-* Qt WebEngine
-* That Open Engine
-* QWebChannel
+* `QProcess` (gestion del subproceso Python visor)
+* `QWidget.createWindowContainer` + `QWindow.fromWinId` (embedding ventana nativa)
+* `ThreadingHTTPServer` (servidor IFC local, polling `/current.json`)
+* `web-ifc` (WASM, lectura IFC + lectura de propiedades) + `Three.js` (renderizado WebGL)
+* SwiftShader (software renderer activado via `QTWEBENGINE_CHROMIUM_FLAGS`)
+
+El visor corre en un subproceso Python separado (`webviewer_app.py`) para que
+Chromium arranque fresco y lea las flags de SwiftShader, resolviendo la
+incompatibilidad con el Chromium ya inicializado por QGIS. Ver ADR-008 y ADR-009.
+
+El arbol de elementos incluye dos vistas (Fase A y Fase B, ver ADR-010):
+
+* **Vista por categoria** — lista plana de elementos agrupados por tipo IFC (Walls, Doors, Slabs...).
+* **Vista espacial** — jerarquia Proyecto → Sitio → Edificio → Planta → Elemento, usando
+  `IFCRELAGGREGATES` y `IFCRELCONTAINEDINSPATIALSTRUCTURE`. Activada por defecto si el modelo
+  tiene estructura espacial; deshabilitada si no.
+
+La seleccion de un elemento (tanto desde el arbol como por clic en la escena 3D via ray-casting)
+hace zoom de camara, destaca el elemento en naranja y muestra sus atributos directos y PropertySets.
+
+La comunicacion QGIS → visor es unidireccional via HTTP polling.
+
+**Transferencia BIM→GIS (Fase C):** cada propiedad del panel muestra un boton `→`. Al pulsarlo,
+el JS hace `POST /transfer` al servidor HTTP local. Un QTimer a 250 ms consume la cola en el hilo
+Qt principal y abre un dialogo donde el usuario elige el campo GIS de destino (existente o nuevo).
+El valor se escribe con `layer.changeAttributeValue`. Ver ADR-010 (Fase C).
 
 Este modulo forma parte del MVP.
 
@@ -685,6 +716,84 @@ Como responsable de inventario, quiero convertir mapeos frecuentes en perfiles s
 ### HU-E03 Aplicar un perfil sectorial a un activo
 
 Como tecnico GIS, quiero aplicar un perfil sectorial a un feature, para cargar propiedades IFC habituales de forma semiautomatica.
+
+---
+
+### HU-E04 Generar huella geografica de una planta IFC georreferenciada como capa temporal
+
+Como tecnico GIS, quiero seleccionar una planta de un modelo IFC georreferenciado y cargar su geometria 2D como capa temporal en QGIS, para verificar y situar geograficamente una planta concreta del edificio sin importar geometria BIM de forma permanente.
+
+Criterios de aceptacion:
+
+**Deteccion de georreferenciacion:**
+
+* El sistema detecta si el IFC abierto contiene georreferenciacion completa mediante `IfcMapConversion` e `IfcCoordinateReferenceSystem` (IFC4+).
+* Si no existe `IfcMapConversion` o no se puede identificar un CRS valido, el sistema informa al usuario con un mensaje claro y no genera la capa.
+* Si solo existe `IfcSite.RefLatitude`/`RefLongitude` sin `IfcMapConversion`, el sistema advierte de la limitacion y no procede.
+
+**Seleccion de planta:**
+
+* El sistema lee los elementos `IfcBuildingStorey` del modelo y presenta al usuario una lista de plantas disponibles, ordenadas por elevation.
+* Cada entrada de la lista muestra el nombre del `IfcBuildingStorey` y su cota de referencia cuando este disponible.
+* El usuario selecciona una planta de la lista antes de generar la capa.
+* Si el modelo no contiene `IfcBuildingStorey`, el sistema informa al usuario y no genera la capa.
+
+**Generacion de geometria:**
+
+* El sistema obtiene los elementos `IfcSlab` contenidos en el `IfcBuildingStorey` seleccionado mediante `IfcRelContainedInSpatialStructure`.
+* Si el storey no contiene `IfcSlab`, el sistema usa todos los elementos del storey como fallback e informa al usuario de esta situacion.
+* El sistema extrae la geometria 3D de los elementos seleccionados usando IfcOpenShell con coordenadas de mundo (`USE_WORLD_COORDS`).
+* El sistema proyecta los vertices al plano XY (descarta Z) y calcula la union de las geometrias resultantes.
+* Si la union produce una geometria no valida o vacia, el sistema informa al usuario y no genera la capa.
+
+**Transformacion de coordenadas:**
+
+* El sistema aplica la transformacion de `IfcMapConversion` (Eastings, Northings, OrthogonalHeight, rotacion, escala) usando `ifcopenshell.util.geolocation`.
+* El CRS de la capa generada corresponde al identificado en `IfcCoordinateReferenceSystem` del modelo.
+
+**Capa QGIS:**
+
+* El sistema crea una capa de memoria en QGIS de tipo Polygon con el CRS detectado.
+* La capa contiene un unico feature con la geometria de la planta seleccionada y los atributos: nombre del storey, cota de referencia, nombre del fichero IFC y CRS identificado.
+* La capa se denomina "IFC Floor — <nombre_storey> — <nombre_fichero>" y se anade automaticamente al proyecto QGIS activo.
+* La capa es temporal y no persiste entre sesiones de QGIS.
+* Se puede generar una nueva capa para una planta diferente sin eliminar las anteriores.
+
+**Operacion y feedback:**
+
+* La operacion se lanza desde el panel del complemento cuando hay un IFC abierto en el visor.
+* El sistema registra en developer logs el CRS detectado, el storey seleccionado, el numero de elementos procesados y el resultado de la transformacion.
+* El sistema muestra mensajes de usuario al completar la operacion o al informar de cualquier limitacion o error.
+* Los mensajes de usuario estan disponibles en ingles y espanol.
+
+Restricciones tecnicas:
+
+* La deteccion de georreferenciacion y la lectura de storeys y geometria se implementan en `adapters/ifc/`.
+* La creacion de la capa temporal y el selector de planta se implementan en `adapters/qgis/`.
+* No se importa geometria IFC como capa GIS permanente.
+* Se usa `ifcopenshell.util.geolocation` para la transformacion de coordenadas.
+* Se usa `shapely` para la union de geometrias (disponible en el entorno QGIS).
+* No se importa `shapely` ni `IfcOpenShell` desde codigo del nucleo (`core/`).
+* La operacion no bloquea la interfaz de QGIS; si el modelo es grande, debe ejecutarse con feedback de progreso o en un hilo separado.
+
+Condicion de activacion:
+
+* Requiere que el IFC este abierto en el visor embebido (HU-02 completada).
+* Se activa solo cuando el IFC tiene georreferenciacion completa via `IfcMapConversion`.
+* Esta historia es evolutiva y no forma parte del MVP. Se implementa tras validar el flujo manual de propiedades (HU-05 a HU-08).
+
+Diseno de integracion con el selector de plantas existente:
+
+* El selector de plantas del visor (storey bar) ya existe en TypeScript (Phase D). Al pulsar una planta,
+  el visor JS notifica a Python mediante `POST /transfer` con `{"type": "storey_selected", "storey_id": N, "storey_name": "..."}`.
+  Al pulsar All, notifica con `storey_id: null`.
+* El endpoint `/transfer` ya existe en `IfcHttpServer`. No se requiere infraestructura IPC nueva.
+* `GeoIfcAssetsPlugin._handle_transfer` despacha el nuevo tipo para actualizar `_active_storey`.
+* El boton "Generar planta en QGIS" aparece en la barra inferior del visor tab del dock, habilitado
+  solo cuando hay una planta activa y el IFC es un fichero local.
+* La extraccion de geometria se realiza en el proceso QGIS via IfcOpenShell (independiente de web-ifc).
+* Modulos nuevos: `adapters/ifc/footprint_extractor.py` (logica IFC pura) y
+  `adapters/qgis/footprint_layer.py` (creacion de capa QGIS).
 
 ---
 
@@ -1130,3 +1239,107 @@ activos territoriales + visor IFC + atributos GIS enriquecidos desde BIM
 ```
 
 sin necesidad de replicar el modelo BIM dentro del SIG.
+
+---
+
+# 16. Estado de implementacion (2026-06-23)
+
+## 16.1 Resumen por fase
+
+| Fase | Descripcion | Estado |
+|------|-------------|--------|
+| Fase 1 | Base del complemento | Completa |
+| Fase 2 | MVP visor IFC + carga manual | ~85 % (pendientes menores) |
+| Fase 3 | Calidad y empaquetado | ~40 % (tests unitarios presentes; faltan integracion, QGIS y documentacion) |
+| Fase 4 | Perfiles sectoriales | No iniciada |
+
+---
+
+## 16.2 Estado por historia de usuario MVP
+
+| HU | Titulo | Estado | Observaciones |
+|----|--------|--------|---------------|
+| HU-01 | Validar la capa GIS de trabajo | Completa | Selector de capa y feature en dock; validacion de `ifc_path` / `ifc_url`; mensajes de error claros. |
+| HU-02 | Abrir el IFC en visor embebido | Completa | Subproceso `webviewer_app.py` + SwiftShader + polling HTTP. El subproceso se lanza de forma lazy al seleccionar el primer feature (no al abrir el panel). Seleccionar un feature activa automaticamente la pestana IFC Viewer. La accion de capa QGIS no esta implementada (aplazada). |
+| HU-03 | Seleccionar un elemento IFC | Completa | Arbol por categoria (Fase A), arbol espacial (Fase B), ray-casting 3D, zoom de camara al elemento seleccionado. |
+| HU-04 | Consultar propiedades BIM | Completa | Atributos directos y PropertySets mostrados en el panel del visor. Quantity Sets pendientes de verificar en el visor JS. Busqueda/filtrado de propiedades por texto no implementado. |
+| HU-05 | Seleccionar propiedades para cargar en GIS | Parcial | Transferencia propiedad a propiedad con boton `->`. No existe seleccion multiple de propiedades en un solo paso. |
+| HU-06 | Mapear propiedades IFC a campos GIS | Completa | Dialogo BIM->GIS con campo existente o campo nuevo (Fase C: POST /transfer + QDialog + `changeAttributeValue`). |
+| HU-07 | Crear campos GIS controladamente | Completa | El dialogo de transferencia solicita confirmacion antes de crear el campo. |
+| HU-08 | Escribir valores IFC en atributos GIS | Parcial | Escritura del valor en el campo seleccionado funcional. Los campos `ifc_status`, `ifc_updated_at` e `ifc_error` no se actualizan automaticamente tras la transferencia. |
+| HU-09 | Usar el complemento en ingles y espanol | Parcial | Todos los textos usan `tr()`. Archivos `.ts` en ingles y espanol presentes. Archivos `.qm` compilados ausentes — las traducciones no estan activas en QGIS. |
+| HU-10 | Instalar y validar el complemento | Completa | Estructura de repositorio correcta, `metadata.txt`, scripts de empaquetado presentes. |
+| HU-11 | Consultar el estado de los flujos | Completa | Log de usuario en dock (QTextEdit). Developer logs via `PluginLogger`. Sin `print()` en el plugin distribuible. |
+
+---
+
+## 16.3 Estado por historia de usuario evolutiva
+
+| HU | Titulo | Estado | Observaciones |
+|----|--------|--------|---------------|
+| HU-E01 | Guardar un mapeo reutilizable | No iniciada | |
+| HU-E02 | Crear un perfil sectorial desde mapeos validados | No iniciada | |
+| HU-E03 | Aplicar un perfil sectorial a un activo | No iniciada | |
+| HU-E04 | Generar huella geografica de planta IFC | Completa | Implementada antes del MVP. `footprint_extractor.py` y `footprint_layer.py`. Deteccion de `IfcMapConversion`, transformacion de coordenadas via `ifcopenshell.util.geolocation`, capa temporal en QGIS con reproyeccion al CRS del proyecto. Dialogo manual de CRS si el IFC carece de `IfcMapConversion`. |
+
+---
+
+## 16.4 Modulos implementados
+
+| Modulo | Ruta | Descripcion |
+|--------|------|-------------|
+| Plugin principal | `adapters/qgis/plugin.py` | Punto central: inicializacion, dock, visor, transferencia BIM->GIS, huella IFC. |
+| Dock principal | `adapters/qgis/dock.py` | Tabs Layer/Features, Properties, IFC Viewer. Selector de capa y feature, log de usuario, barra de planta/huella. |
+| Visor IFC | `adapters/qgis/viewer.py` | `IfcViewerDock`: QProcess + HTTP server local + polling `/current.json` + cola de transferencias. SwiftShader via `_ensure_swiftshader_flag`. Subproceso lazy: se lanza en el primer `open_reference()`, no en `__init__`. |
+| Subproceso visor | `webviewer_app.py` | Proceso independiente con `QWebEngineView`. Carga la SPA web-ifc + Three.js. |
+| SPA web-ifc | `webviewer/` | HTML + bundle Vite (JS + CSS + web-ifc WASM). Renderizado 3D, arbol de elementos, ray-casting, selector de plantas, boton de transferencia propiedad. |
+| Extractor de huella | `adapters/ifc/footprint_extractor.py` | Detecta `IfcMapConversion`, extrae geometria de `IfcBuildingStorey`, aplica transformacion georreferenciada, devuelve WKT. |
+| Capa de huella | `adapters/qgis/footprint_layer.py` | Crea capa de memoria QGIS con la huella y la anade al proyecto. |
+| Lector IFC | `adapters/ifc/reader.py` | Lee esquema IFC (IFC2x3 / IFC4 / IFC4.3) sin IfcOpenShell completo (parsing ligero del header). |
+| Lector de features | `adapters/qgis/feature_reader.py` | Lee `ifc_path` / `ifc_url` del feature seleccionado y resuelve conflictos. |
+| Escritor de features | `adapters/qgis/feature_writer.py` | Escribe atributos en la capa GIS. |
+| Modelos core | `core/models.py` | `IfcReference`, `IfcReferenceKind`, `IfcModelSummary`, `LayerRequirementResult`. |
+| Logging | `services/logging.py` | `PluginLogger` con developer logs y user logs; sin `print()`. |
+| Compat QGIS | `adapters/qgis/compat.py` | Utilidades de compatibilidad QGIS 3 / QGIS 4. |
+| i18n | `adapters/qgis/i18n.py` | Funcion `tr()` para textos traducibles. |
+
+---
+
+## 16.5 Tests implementados
+
+| Archivo | Cubre |
+|---------|-------|
+| `test_logging_service.py` | `PluginLogger` |
+| `test_layer_contract.py` | Contrato minimo de capa (`ifc_path` / `ifc_url`) |
+| `test_mapping.py` | Logica de mapeo de propiedades |
+| `test_qgis_feature_writer.py` | Escritura de atributos GIS |
+| `test_qgis_messages.py` | Servicio de mensajes QGIS |
+| `test_ifc_reader.py` | Lector ligero de IFC header |
+| `test_viewer_script.py` | Script de subproceso del visor |
+| `test_qgis_feature_reader.py` | Lector de referencias IFC desde features |
+| `test_feature_label.py` | Generacion de etiqueta de feature |
+
+Sin tests de integracion ni tests con entorno QGIS real aun.
+
+---
+
+## 16.6 Pendientes prioritarios para cerrar el MVP
+
+1. **Compilar archivos .qm** — ejecutar `scripts/compile_translations.ps1` y verificar carga correcta en QGIS para activar traducciones EN/ES (HU-09).
+2. **Campos ifc_status / ifc_updated_at** — actualizar automaticamente esos campos en la capa GIS tras cada transferencia exitosa (HU-08).
+3. **Quantity Sets en el visor** — verificar que el visor web muestra Quantity Sets y que el boton `->` funciona para ellos (HU-04).
+4. **Tests de integracion** — al menos un test de integracion con fixture IFC real para la extraccion de propiedades y la huella geografica (Fase 3).
+5. **Documentacion de usuario** — `docs/manual_usuario.md` y `docs/instalacion.md` no existen aun (Fase 3).
+
+---
+
+## 16.7 Decisiones tecnicas relevantes ya registradas
+
+Los ADRs del proyecto estan documentados en `docs/adrs_geoifc.md`:
+
+* ADR-001: Relacion GIS <-> IFC via campo `ifc_path` / `ifc_url`.
+* ADR-008: Visor IFC en subproceso separado con SwiftShader y polling HTTP.
+* ADR-009: Embedding de la ventana del subproceso en el dock QGIS.
+* ADR-010: Fases A-B-C del visor (arbol plano, arbol espacial, transferencia BIM->GIS).
+
+La logica de accion de capa QGIS queda aplazada; el flujo desde el selector de features del dock es suficiente para el MVP.
