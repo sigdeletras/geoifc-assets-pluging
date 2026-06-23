@@ -206,10 +206,7 @@ class GeoIfcAssetsDock:
             self._feature_table.setItem(
                 row, 2, self._table_item(feature.ifc_source)
             )
-        if features:
-            self._feature_table.selectRow(0)
         self._updating_ui = False
-        self._select_feature_row()
 
     def _select_feature_row(self) -> None:
         if self._updating_ui:

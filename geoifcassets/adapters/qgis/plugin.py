@@ -156,6 +156,8 @@ class GeoIfcAssetsPlugin:
 
         if self._current_reference is not None and self._viewer_dock is not None:
             self._viewer_dock.open_reference(self._current_reference)
+            if self._dock is not None:
+                self._dock.switch_to_viewer_tab()
         elif self._viewer_dock is not None:
             self._viewer_dock.clear_reference()
 

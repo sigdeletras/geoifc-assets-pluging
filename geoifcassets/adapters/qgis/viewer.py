@@ -275,13 +275,11 @@ class IfcViewerDock:
         self._source_label.setWordWrap(True)
         layout.addWidget(self._source_label)
 
-        self._status_label = QLabel(tr("GeoIfcAssets", "Launching IFC viewer subprocess..."))
+        self._status_label = QLabel(tr("GeoIfcAssets", "Select a feature to start the IFC viewer."))
         self._status_label.setWordWrap(True)
         layout.addWidget(self._status_label)
 
         layout.addStretch(1)
-
-        self._launch_subprocess()
 
     def qwidget(self) -> Any:
         return self.widget
