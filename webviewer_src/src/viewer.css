@@ -398,6 +398,76 @@ strong {
   opacity: 1;
 }
 
+/* ── Storey filter bar ─────────────────────────────────────────────────────── */
+
+.storey-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 5px 8px;
+  border-bottom: 1px solid #e8edf1;
+  background: #f0f4f8;
+  overflow-x: auto;
+}
+
+.storey-btn {
+  padding: 3px 8px;
+  border: 1px solid #ccd7e0;
+  border-radius: 3px;
+  background: #ffffff;
+  font-size: 11px;
+  color: #2e4053;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+  flex-shrink: 0;
+}
+
+.storey-btn:hover {
+  background: #edf3fb;
+  border-color: #2471a3;
+  color: #1a5276;
+}
+
+.storey-btn.active {
+  background: #1a5276;
+  border-color: #1a5276;
+  color: #ffffff;
+}
+
+/* ── 2D / 3D view toggle ───────────────────────────────────────────────────── */
+
+.view-toggle-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px 10px;
+  border: 1px solid #cfd7df;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  font-weight: 700;
+  color: #2e4053;
+  cursor: pointer;
+  z-index: 10;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.view-toggle-btn:hover {
+  background: #2471a3;
+  color: #ffffff;
+  border-color: #2471a3;
+}
+
+.view-toggle-btn.active-2d {
+  background: #1d6a39;
+  color: #ffffff;
+  border-color: #1d6a39;
+}
+
 /* ── Responsive ────────────────────────────────────────────────────────────── */
 
 @media (max-width: 760px) {

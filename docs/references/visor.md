@@ -487,6 +487,57 @@ El botón queda verde (`prop-sent`) al completarse correctamente, o rojo (`prop-
 
 ---
 
+## Selector de plantas y vista 2D (Fase D)
+
+### Barra de filtro por planta (`storeyBarEl`)
+
+Tras cargar el modelo, si el IFC contiene al menos un `IfcBuildingStorey`, aparece una barra
+horizontal de botones entre el selector Category/Spatial y el árbol de elementos. Contiene un
+botón **All** y un botón por cada planta detectada.
+
+El índice se construye con `buildStoreyIndex(spatialRoot)`, que recorre recursivamente el árbol
+espacial ya construido en Fase B. Para cada nodo de tipo `storey` asigna en
+`elementToStorey: Map<expressId, storeyExpressId>` todos los elementos de la planta (incluyendo
+los de sub-espacios hijos). La variable `storeys: SpatialNode[]` guarda las plantas en el orden
+del árbol.
+
+Al pulsar un botón de planta:
+
+1. `filterByStorey(storeyId)` recorre `modelGroup.traverse()` y aplica `mesh.visible` según si el
+   `expressId` del mesh tiene ese `storeyId` en `elementToStorey`.
+2. Se calcula la bounding box de los meshes visibles con `getVisibleBoundingBox()`.
+3. Si está activo el modo 2D → `fitCamera2DToBox(box)`; si no → `fitCameraToBox(box)`.
+4. `updateStoreyBarUI()` sincroniza la clase `active` de los botones.
+
+Al pulsar **All** → `filterByStorey(null)` restaura `mesh.visible = true` en todos los meshes.
+
+### Vista cenital 2D (`btn2DView`)
+
+Botón posicionado en la esquina superior derecha del canvas (`.view-toggle-btn`, posición absoluta
+dentro de `.viewport`). Visible solo cuando hay geometría cargada.
+
+**Entrar en modo 2D (`switchTo2DView`):**
+1. Guarda posición y target actuales en `saved3DCamera`.
+2. Cambia `camera.up` a `(0, 0, −1)` para evitar la singularidad gimbal en vista cenital pura.
+3. Llama a `fitCamera2DToBox` con la bounding box de elementos visibles:
+   - Target = centro XZ de la bounding box.
+   - Posición = centro + `maxExtent * 2 + elevHeight * 0.5 + 1` en el eje Y.
+4. Desactiva `controls.enableRotate`, activa `controls.screenSpacePanning`.
+5. Botón muestra **3D** con fondo verde (clase `active-2d`).
+
+**Salir del modo 2D (`switchTo3DView`):**
+1. Restaura `camera.up` a `(0, 1, 0)`.
+2. Restaura posición y target desde `saved3DCamera`.
+3. Reactiva `controls.enableRotate`, desactiva `controls.screenSpacePanning`.
+4. Botón vuelve a mostrar **2D**.
+
+Al limpiar el modelo (`clearModel`), `reset2DState()` restaura el estado 3D sin animación si la
+vista 2D estaba activa.
+
+Ver especificación completa en `docs/visor_selector_plantas.md`.
+
+---
+
 ## Limitaciones conocidas
 
 - **HU-03 (selección de elemento IFC → QGIS):** Parcialmente implementada mediante POST `/transfer`. El canal inverso está activo para transferencia de propiedades; la selección de geometría IFC → highlight en capa GIS sigue pendiente.

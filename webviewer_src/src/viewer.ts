@@ -137,6 +137,8 @@ const elementPropsEl = document.getElementById("element-props") as HTMLElement;
 const treeModeBar = document.getElementById("tree-mode-bar") as HTMLElement;
 const btnModeCat = document.getElementById("btn-mode-cat") as HTMLButtonElement;
 const btnModeSpatial = document.getElementById("btn-mode-spatial") as HTMLButtonElement;
+const storeyBarEl = document.getElementById("storey-bar") as HTMLElement;
+const btn2DView = document.getElementById("btn-view-2d") as HTMLButtonElement;
 
 // ── Viewer state ──────────────────────────────────────────────────────────────
 
@@ -158,6 +160,15 @@ const savedMaterials = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
 // Spatial tree state (Phase B)
 let spatialRoot: SpatialNode | null = null;
 let viewMode: ViewMode = "category";
+
+// Storey filter state (Phase D)
+let storeys: SpatialNode[] = [];
+const elementToStorey = new Map<number, number>(); // element expressId → storey expressId
+let activeStoreyId: number | null = null;
+
+// 2D top-down view state (Phase D)
+let is2DView = false;
+let saved3DCamera: { pos: THREE.Vector3; target: THREE.Vector3 } | null = null;
 
 // Ray-casting (Phase B)
 const raycaster = new THREE.Raycaster();
@@ -433,11 +444,160 @@ function readPropertySets(api: IfcAPI, modelId: number, expressId: number): PSet
   return psets;
 }
 
+// ── 2D top-down view (Phase D) ────────────────────────────────────────────────
+
+function getVisibleBoundingBox(): THREE.Box3 {
+  const box = new THREE.Box3();
+  modelGroup?.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (mesh.isMesh && mesh.visible) box.expandByObject(mesh);
+  });
+  if (box.isEmpty() && modelGroup) box.setFromObject(modelGroup);
+  return box;
+}
+
+function fitCamera2DToBox(box: THREE.Box3): void {
+  if (!camera || !controls || box.isEmpty()) return;
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const maxExtent = Math.max(size.x, size.z, 1);
+  const elevHeight = size.y;
+  const distance = maxExtent * 2;
+  controls.target.set(center.x, center.y, center.z);
+  camera.position.set(center.x, center.y + distance + elevHeight * 0.5 + 1, center.z);
+  const pCam = camera as THREE.PerspectiveCamera;
+  pCam.near = Math.max(0.05, distance / 100);
+  pCam.far = (distance + elevHeight) * 4;
+  pCam.updateProjectionMatrix();
+  controls.update();
+}
+
+function switchTo2DView(): void {
+  if (!camera || !controls || !modelGroup) return;
+  is2DView = true;
+  saved3DCamera = { pos: camera.position.clone(), target: controls.target.clone() };
+  // Change up vector to avoid gimbal singularity when looking straight down Y axis
+  camera.up.set(0, 0, -1);
+  fitCamera2DToBox(getVisibleBoundingBox());
+  controls.enableRotate = false;
+  controls.screenSpacePanning = true;
+  controls.update();
+  btn2DView.classList.add("active-2d");
+  btn2DView.textContent = "3D";
+  btn2DView.title = "Switch to 3D view";
+}
+
+function switchTo3DView(): void {
+  if (!camera || !controls) return;
+  is2DView = false;
+  camera.up.set(0, 1, 0);
+  if (saved3DCamera) {
+    camera.position.copy(saved3DCamera.pos);
+    controls.target.copy(saved3DCamera.target);
+    saved3DCamera = null;
+  }
+  controls.enableRotate = true;
+  controls.screenSpacePanning = false;
+  controls.update();
+  btn2DView.classList.remove("active-2d");
+  btn2DView.textContent = "2D";
+  btn2DView.title = "Switch to 2D top-down view";
+}
+
+btn2DView.addEventListener("click", () => {
+  if (is2DView) switchTo3DView();
+  else switchTo2DView();
+});
+
+// ── Storey filter (Phase D) ───────────────────────────────────────────────────
+
+function collectStoreyElements(node: SpatialNode, storeyId: number): void {
+  for (const el of node.elements) {
+    elementToStorey.set(el.expressId, storeyId);
+  }
+  for (const child of node.children) {
+    collectStoreyElements(child, storeyId);
+  }
+}
+
+function collectStoreys(node: SpatialNode): void {
+  if (node.typeCss === "storey") {
+    storeys.push(node);
+    collectStoreyElements(node, node.expressId);
+  } else {
+    for (const child of node.children) {
+      collectStoreys(child);
+    }
+  }
+}
+
+function buildStoreyIndex(root: SpatialNode): void {
+  storeys = [];
+  elementToStorey.clear();
+  collectStoreys(root);
+}
+
+function updateStoreyBarUI(): void {
+  storeyBarEl.querySelectorAll<HTMLButtonElement>(".storey-btn").forEach((btn) => {
+    const eid = btn.dataset.eid !== undefined ? Number(btn.dataset.eid) : null;
+    btn.classList.toggle("active", eid === activeStoreyId);
+  });
+}
+
+function filterByStorey(storeyId: number | null): void {
+  activeStoreyId = storeyId;
+  modelGroup?.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const expressId = mesh.userData.expressID as number | undefined;
+    if (expressId === undefined) return;
+    mesh.visible = storeyId === null || elementToStorey.get(expressId) === storeyId;
+  });
+
+  const box = getVisibleBoundingBox();
+  if (is2DView) {
+    fitCamera2DToBox(box);
+  } else {
+    fitCameraToBox(box);
+  }
+  updateStoreyBarUI();
+}
+
+function renderStoreyBar(): void {
+  storeyBarEl.innerHTML = "";
+  if (storeys.length === 0) {
+    storeyBarEl.hidden = true;
+    return;
+  }
+
+  const allBtn = document.createElement("button");
+  allBtn.className = "storey-btn" + (activeStoreyId === null ? " active" : "");
+  allBtn.textContent = "All";
+  allBtn.title = "Show all storeys";
+  allBtn.addEventListener("click", () => filterByStorey(null));
+  storeyBarEl.appendChild(allBtn);
+
+  for (const storey of storeys) {
+    const btn = document.createElement("button");
+    btn.className = "storey-btn" + (activeStoreyId === storey.expressId ? " active" : "");
+    const label = storey.name || `Storey #${storey.expressId}`;
+    btn.textContent = label;
+    btn.title = label;
+    btn.dataset.eid = String(storey.expressId);
+    btn.addEventListener("click", () => filterByStorey(storey.expressId));
+    storeyBarEl.appendChild(btn);
+  }
+
+  storeyBarEl.hidden = false;
+}
+
 // ── Model state management ────────────────────────────────────────────────────
 
 function clearModel(): void {
   if (!scene) return;
 
+  reset2DState();
+  resetStoreyState();
   clearHighlight();
   selectedExpressId = null;
   elementsByCategory = null;
@@ -465,10 +625,33 @@ function clearModel(): void {
 
 function clearTreeUI(): void {
   treeModeBar.hidden = true;
+  storeyBarEl.hidden = true;
+  btn2DView.hidden = true;
   elementTreeEl.innerHTML =
     '<p class="panel-hint">Load an IFC model to browse elements.</p>';
   elementPropsEl.hidden = true;
   elementPropsEl.innerHTML = "";
+}
+
+function reset2DState(): void {
+  if (is2DView) {
+    is2DView = false;
+    if (camera) camera.up.set(0, 1, 0);
+    if (controls) {
+      controls.enableRotate = true;
+      controls.screenSpacePanning = false;
+    }
+    btn2DView.classList.remove("active-2d");
+    btn2DView.textContent = "2D";
+    btn2DView.title = "Switch to 2D top-down view";
+    saved3DCamera = null;
+  }
+}
+
+function resetStoreyState(): void {
+  storeys = [];
+  elementToStorey.clear();
+  activeStoreyId = null;
 }
 
 // ── Property set index ────────────────────────────────────────────────────────
@@ -1003,6 +1186,12 @@ async function loadIfc(payload: ViewerPayload): Promise<void> {
   // Build Phase B spatial tree
   buildSpatialTree(api, modelId);
 
+  // Build storey index and render filter bar (Phase D)
+  if (spatialRoot !== null) {
+    buildStoreyIndex(spatialRoot);
+    renderStoreyBar();
+  }
+
   // Show mode bar; activate category view by default; spatial if structure found
   treeModeBar.hidden = false;
   btnModeSpatial.disabled = spatialRoot === null;
@@ -1010,6 +1199,9 @@ async function loadIfc(payload: ViewerPayload): Promise<void> {
   btnModeCat.classList.toggle("active", viewMode === "category");
   btnModeSpatial.classList.toggle("active", viewMode === "spatial");
   renderActiveTree();
+
+  // Show 2D toggle button when geometry is available (Phase D)
+  btn2DView.hidden = meshCount === 0;
 
   const hasSpatial = spatialRoot !== null ? " · spatial structure available" : "";
   setStatus(`IFC ready: ${meshCount} elements${hasSpatial}`);
