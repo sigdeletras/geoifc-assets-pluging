@@ -96,6 +96,46 @@ strong {
   white-space: nowrap;
 }
 
+/* ── View mode toggle bar ──────────────────────────────────────────────────── */
+
+.tree-mode-bar {
+  flex-shrink: 0;
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #e8edf1;
+  background: #f7f9fb;
+}
+
+.tree-mode-btn {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid #ccd7e0;
+  border-radius: 4px;
+  background: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  color: #5d6d7e;
+  cursor: pointer;
+}
+
+.tree-mode-btn:hover:not(:disabled) {
+  background: #edf3fb;
+  border-color: #2471a3;
+  color: #1a5276;
+}
+
+.tree-mode-btn.active {
+  background: #2471a3;
+  border-color: #2471a3;
+  color: #ffffff;
+}
+
+.tree-mode-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* ── Element tree ──────────────────────────────────────────────────────────── */
 
 .panel-tree {
@@ -111,7 +151,7 @@ strong {
   line-height: 1.5;
 }
 
-/* Category group (<details>) */
+/* Category / spatial group (<details>) */
 .tree-cat {
   border-bottom: 1px solid #f0f3f5;
 }
@@ -161,6 +201,44 @@ strong {
   padding: 1px 7px;
   font-size: 11px;
   font-weight: 700;
+}
+
+/* ── Spatial tree node type labels ────────────────────────────────────────── */
+
+.snode-type {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 3px;
+  padding: 1px 5px;
+  background: #e8edf1;
+  color: #5d6d7e;
+}
+
+.snode-project > summary { background: #ecf0f1; }
+.snode-project > summary .snode-type { background: #bdc3c7; color: #2c3e50; }
+
+.snode-site > summary { background: #eafaf1; }
+.snode-site > summary .snode-type { background: #a9dfbf; color: #1d6a39; }
+
+.snode-building > summary { background: #eaf2fb; }
+.snode-building > summary .snode-type { background: #aed6f1; color: #1a5276; }
+
+.snode-storey > summary { background: #f4f6f7; }
+.snode-storey > summary .snode-type { background: #ccd7e0; color: #2e4053; }
+
+.snode-space > summary { background: #fdfefe; }
+.snode-space > summary .snode-type { background: #d5dbdb; color: #555; }
+
+/* Nested spatial nodes are indented via left border */
+.snode-building,
+.snode-storey,
+.snode-space,
+.snode-other {
+  margin-left: 10px;
+  border-left: 2px solid #e8edf1;
 }
 
 /* Element list (<ul>) */

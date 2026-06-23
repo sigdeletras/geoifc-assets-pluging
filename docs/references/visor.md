@@ -426,11 +426,44 @@ Solo se incluyen PropertySets que tengan al menos una propiedad con valor legibl
 
 ---
 
+## Árbol espacial y selección por clic (Fase B)
+
+### Selector de vista
+
+La barra de modo (`#tree-mode-bar`) muestra dos botones: **Category** (vista plana por categoría, siempre disponible) y **Spatial** (jerarquía espacial, habilitado solo si el modelo tiene estructura espacial IFC). El visor activa Spatial automáticamente si la estructura está disponible.
+
+### Árbol espacial (`buildSpatialTree`)
+
+Se construye recorriendo dos tipos de relaciones:
+
+| Relación | Campo origen | Campo destino | Significado |
+|---|---|---|---|
+| `IFCRELAGGREGATES` | `RelatingObject` | `RelatedObjects[]` | Descomposición espacial (Proyecto → Sitio → Edificio → Planta → Espacio) |
+| `IFCRELCONTAINEDINSPATIALSTRUCTURE` | `RelatingStructure` | `RelatedElements[]` | Elementos físicos contenidos en cada planta o espacio |
+
+El árbol se modela como `SpatialNode { expressId, name, typeLabel, typeCss, children[], elements[], totalCount }`. `totalCount` es recursivo: incluye los elementos de todos los sub-nodos.
+
+Los datos de nombre y categoría de cada elemento se reutilizan desde el índice `elementsByCategory` (ya construido en Fase A), sin llamadas adicionales a `api.GetLine`.
+
+El renderizado usa `<details class="tree-cat snode-{type}">` anidados. Los nodos de tipo `storey` están abiertos por defecto; los de tipo `space` están cerrados. Cada tipo recibe un color de fondo y etiqueta distintivos mediante CSS (`snode-project`, `snode-site`, `snode-building`, `snode-storey`, `snode-space`).
+
+### Selección por clic en la escena 3D
+
+`THREE.Raycaster` singleton (evita instanciación por evento). El listener de `mousedown` registra la posición inicial del ratón; el listener de `click` descarta el evento si el desplazamiento supera 4 px (indica arrastre de órbita/pan).
+
+Cuando se detecta un clic real:
+1. Se convierte la posición del ratón a coordenadas NDC.
+2. `raycaster.intersectObjects(meshes, false)` devuelve las intersecciones ordenadas por distancia.
+3. El primer hit proporciona el `expressID` del mesh → `selectElement(expressId)`.
+4. `selectElement` abre los `<details>` ancestros en el árbol activo y hace scroll al botón.
+
+---
+
 ## Limitaciones conocidas
 
 - **HU-03 (selección de elemento IFC → QGIS):** No implementada. El canal inverso subproceso → QGIS requiere un mecanismo adicional (endpoint HTTP `POST /selection` o WebSocket). El polling actual es unidireccional.
 - **URLs remotas:** El campo `ifc_url` con valor `http://` o `https://` muestra advertencia; el IFC no se carga. Pendiente de implementación.
 - **Latencia:** El polling introduce un retraso de hasta 1,5 s entre selección de feature y actualización del visor.
 - **Arranque inicial:** El subproceso tarda ~1-2 s en arrancar (Chromium + WASM). Durante ese tiempo el dock muestra el placeholder "Starting IFC viewer subprocess…".
-- **Árbol de elementos — rendimiento en modelos grandes:** `buildElementIndex` hace una llamada `api.GetLine` por cada elemento con geometría. En modelos con >5.000 elementos únicos, el tiempo de indexación puede ser perceptible (~1-3 s adicionales tras la carga de geometría).
-- **Árbol de elementos — jerarquía espacial:** Fase A muestra una lista plana por categoría, no el árbol espacial completo (Edificio → Planta → Espacio → Elemento). La jerarquía espacial completa requiere recorrer `IFCRELCONTAINEDINSPATIALSTRUCTURE` y `IFCRELAGGREGATES`, que está previsto en Fase B.
+- **Rendimiento en modelos grandes:** `buildElementIndex` hace una llamada `api.GetLine` por cada elemento con geometría. En modelos con >5.000 elementos únicos, la indexación puede añadir ~1-3 s tras la carga de geometría.
+- **Elementos sin estructura espacial:** elementos con geometría pero sin `IFCRELCONTAINEDINSPATIALSTRUCTURE` no aparecen en el árbol Spatial. Siempre están disponibles en la vista Category.

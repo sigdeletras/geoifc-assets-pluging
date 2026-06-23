@@ -991,11 +991,11 @@ El objetivo es que el complemento sea:
 
 ---
 
-# ADR-010: Árbol de Elementos IFC en el Visor — Fase A
+# ADR-010: Árbol de Elementos IFC en el Visor — Fase A y Fase B
 
 ## Estado
 
-Aceptado. Implementado en `webviewer_src/src/viewer.ts`, `webviewer_src/src/viewer.css` y `webviewer_src/index.html`. Bundle compilado en `geoifcassets/webviewer/assets/`.
+Aceptado. **Fase A y Fase B implementadas** en `webviewer_src/src/viewer.ts`, `webviewer_src/src/viewer.css` y `webviewer_src/index.html`. Bundle compilado en `geoifcassets/webviewer/assets/`.
 
 ## Contexto
 
@@ -1134,8 +1134,68 @@ Al deseleccionar o limpiar el modelo: `clearHighlight()` restaura los materiales
 
 ---
 
-## Evolución prevista (Fase B)
+## Fase B: jerarquía espacial y selección por clic
 
-- **Selección por clic en la escena 3D** (ray-casting) como forma complementaria al árbol.
-- **Jerarquía espacial** (Edificio → Planta → Espacio → Elemento) usando `IFCRELAGGREGATES` + `IFCRELCONTAINEDINSPATIALSTRUCTURE`.
+Implementada en la misma rama que Fase A.
+
+### Árbol espacial (Proyecto → Sitio → Edificio → Planta → Elemento)
+
+Se construye el árbol espacial recorriendo dos tipos de relaciones IFC:
+
+- **`IFCRELAGGREGATES`** — descomposición espacial: `RelatingObject` (nodo padre) → `RelatedObjects[]` (nodos hijos). Define la jerarquía Proyecto → Sitio → Edificio → Planta → Espacio.
+- **`IFCRELCONTAINEDINSPATIALSTRUCTURE`** — contenencia: `RelatingStructure` (planta o espacio) → `RelatedElements[]` (elementos físicos contenidos).
+
+Algoritmo de `buildSpatialTree`:
+
+```
+1. GetLineIDsWithType(IFCRELAGGREGATES)
+     → decomposedBy: Map<parentId, childIds[]>
+2. GetLineIDsWithType(IFCRELCONTAINEDINSPATIALSTRUCTURE)
+     → containedIn: Map<structureId, elementIds[]>
+3. GetLineIDsWithType(IFCPROJECT) → rootId
+4. buildSpatialNode(rootId) [recursivo]
+     → SpatialNode { expressId, name, typeLabel, typeCss,
+                     children: SpatialNode[], elements: IFCElement[],
+                     totalCount: number }
+```
+
+Los datos de elementos (nombre, categoría) se reutilizan desde el índice `elementsByCategory` ya construido en Fase A, evitando llamadas duplicadas a `api.GetLine`.
+
+`totalCount` se calcula recursivamente en la construcción del árbol para mostrar el número total de elementos en cada nodo (incluyendo sub-nodos).
+
+**Comportamiento con modelos sin estructura espacial:** si `GetLineIDsWithType(IFCPROJECT)` devuelve 0 entradas, o si `IFCRELAGGREGATES` no existe en el modelo, `spatialRoot` queda como `null`. El botón "Spatial" queda deshabilitado y el visor usa la vista por categoría.
+
+**Selector de vista:** dos botones (`Category` / `Spatial`) en una barra justo encima del árbol. La vista "Spatial" se activa por defecto si el modelo tiene estructura espacial. Los `<details>` de storey están abiertos por defecto; los de space están cerrados (modelos con muchos espacios generarían demasiado ruido visual).
+
+**Indentación visual:** los nodos `snode-building`, `snode-storey` y `snode-space` tienen `margin-left: 10px` y `border-left` para mostrar la jerarquía sin profundidad de anidamiento excesiva.
+
+### Selección por clic en la escena 3D (ray-casting)
+
+`THREE.Raycaster` singleton instanciado una sola vez. Listener de `mousedown` registra la posición inicial. Listener de `click` descarta eventos de arrastre (distancia > 4 px) para no interferir con la órbita de `OrbitControls`:
+
+```typescript
+canvas.addEventListener("click", (e) => {
+  if (Math.sqrt(dx*dx + dy*dy) > 4) return; // era arrastre
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(meshes, false);
+  if (hits.length > 0) selectElement(hits[0].object.userData.expressID);
+});
+```
+
+El clic dispara `selectElement(expressId)`, que abre los `<details>` ancestros necesarios y hace scroll hasta el botón del árbol correspondiente:
+
+```typescript
+let parent = btn?.parentElement;
+while (parent && parent !== elementTreeEl) {
+  if (parent.tagName === "DETAILS") (parent as HTMLDetailsElement).open = true;
+  parent = parent.parentElement;
+}
+btn?.scrollIntoView({ block: "nearest" });
+```
+
+Esto garantiza que después de seleccionar por clic 3D, el árbol muestra y resalta el elemento seleccionado.
+
+## Evolución pendiente (Fase C)
+
 - **Transferencia BIM→GIS**: seleccionar una propiedad en el panel y asignarla a un campo de la feature GIS activa en QGIS (requiere canal inverso subproceso → QGIS, pendiente desde ADR-008).
+- **Elementos sin estructura espacial**: elementos con geometría pero sin `IFCRELCONTAINEDINSPATIALSTRUCTURE` no aparecen en el árbol espacial. Fase C puede añadir un nodo "Not placed" para ellos.

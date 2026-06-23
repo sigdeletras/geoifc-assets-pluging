@@ -418,9 +418,15 @@ El visor corre en un subproceso Python separado (`webviewer_app.py`) para que
 Chromium arranque fresco y lea las flags de SwiftShader, resolviendo la
 incompatibilidad con el Chromium ya inicializado por QGIS. Ver ADR-008 y ADR-009.
 
-El arbol de elementos (Fase A) agrupa los elementos con geometria por categoria IFC,
-permite seleccionar un elemento para hacer zoom en escena 3D y muestra sus atributos
-IFC directos y PropertySets. Ver ADR-010.
+El arbol de elementos incluye dos vistas (Fase A y Fase B, ver ADR-010):
+
+* **Vista por categoria** — lista plana de elementos agrupados por tipo IFC (Walls, Doors, Slabs...).
+* **Vista espacial** — jerarquia Proyecto → Sitio → Edificio → Planta → Elemento, usando
+  `IFCRELAGGREGATES` y `IFCRELCONTAINEDINSPATIALSTRUCTURE`. Activada por defecto si el modelo
+  tiene estructura espacial; deshabilitada si no.
+
+La seleccion de un elemento (tanto desde el arbol como por clic en la escena 3D via ray-casting)
+hace zoom de camara, destaca el elemento en naranja y muestra sus atributos directos y PropertySets.
 
 La comunicacion QGIS → visor es unidireccional via HTTP polling.
 La seleccion de elemento IFC → QGIS (HU-03) esta pendiente de implementacion.

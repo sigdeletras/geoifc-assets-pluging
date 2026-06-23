@@ -20,11 +20,16 @@ import {
   IFCFURNISHINGELEMENT,
   IFCSPACE,
   IFCBUILDINGSTOREY,
+  IFCSITE,
+  IFCBUILDING,
   IFCPILE, IFCFOOTING,
   IFCBUILDINGELEMENTPROXY,
   IFCFLOWSEGMENT, IFCFLOWTERMINAL, IFCFLOWFITTING, IFCFLOWCONTROLLER,
   IFCDUCTSEGMENT, IFCPIPESEGMENT, IFCPIPEFITTING,
   IFCRELDEFINESBYPROPERTIES,
+  IFCRELAGGREGATES,
+  IFCRELCONTAINEDINSPATIALSTRUCTURE,
+  IFCPROJECT,
 } from "web-ifc";
 
 import "./viewer.css";
@@ -37,6 +42,8 @@ type ViewerPayload = {
   dataBase64?: string;
   modelUrl?: string;
 };
+
+type ViewMode = "category" | "spatial";
 
 interface IFCElement {
   expressId: number;
@@ -52,6 +59,16 @@ interface PropEntry {
 interface PSet {
   name: string;
   props: PropEntry[];
+}
+
+interface SpatialNode {
+  expressId: number;
+  name: string;
+  typeLabel: string;
+  typeCss: string;          // CSS class suffix: project | site | building | storey | space | other
+  children: SpatialNode[];
+  elements: IFCElement[];
+  totalCount: number;       // total elements in subtree (recursive)
 }
 
 // ── IFC category labels ───────────────────────────────────────────────────────
@@ -79,6 +96,8 @@ const CATEGORY_NAMES: Record<number, string> = {
   [IFCFURNISHINGELEMENT]: "Furniture",
   [IFCSPACE]: "Spaces",
   [IFCBUILDINGSTOREY]: "Storeys",
+  [IFCSITE]: "Sites",
+  [IFCBUILDING]: "Buildings",
   [IFCPILE]: "Foundations",
   [IFCFOOTING]: "Foundations",
   [IFCBUILDINGELEMENTPROXY]: "Generic Elements",
@@ -95,6 +114,17 @@ function typeCodeToCategory(code: number): string {
   return CATEGORY_NAMES[code] ?? "Other";
 }
 
+const SPATIAL_TYPE_META: Record<
+  number,
+  { label: string; css: string }
+> = {
+  [IFCPROJECT]: { label: "Project", css: "project" },
+  [IFCSITE]: { label: "Site", css: "site" },
+  [IFCBUILDING]: { label: "Building", css: "building" },
+  [IFCBUILDINGSTOREY]: { label: "Storey", css: "storey" },
+  [IFCSPACE]: { label: "Space", css: "space" },
+};
+
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 
 const canvas = document.getElementById("viewer-canvas") as HTMLCanvasElement;
@@ -104,6 +134,9 @@ const sourceKind = document.getElementById("source-kind") as HTMLElement;
 const viewportStatus = document.getElementById("viewport-status") as HTMLElement;
 const elementTreeEl = document.getElementById("element-tree") as HTMLElement;
 const elementPropsEl = document.getElementById("element-props") as HTMLElement;
+const treeModeBar = document.getElementById("tree-mode-bar") as HTMLElement;
+const btnModeCat = document.getElementById("btn-mode-cat") as HTMLButtonElement;
+const btnModeSpatial = document.getElementById("btn-mode-spatial") as HTMLButtonElement;
 
 // ── Viewer state ──────────────────────────────────────────────────────────────
 
@@ -116,12 +149,19 @@ let scene: THREE.Scene | null = null;
 let camera: THREE.PerspectiveCamera | null = null;
 let controls: OrbitControls | null = null;
 
-// Element tree state
+// Element tree state (Phase A)
 let elementsByCategory: Map<string, IFCElement[]> | null = null;
-// propSetIndex[expressId] → list of propertySet expressIDs
 const propSetIndex = new Map<number, number[]>();
 let selectedExpressId: number | null = null;
 const savedMaterials = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+
+// Spatial tree state (Phase B)
+let spatialRoot: SpatialNode | null = null;
+let viewMode: ViewMode = "category";
+
+// Ray-casting (Phase B)
+const raycaster = new THREE.Raycaster();
+let _mouseDownPos: { x: number; y: number } | null = null;
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 
@@ -149,7 +189,6 @@ window.GeoIfcViewer = {
   async openReference(payload: ViewerPayload) {
     if (_initError) {
       setStatus(`3D renderer unavailable: ${_initError}`);
-      console.warn("openReference called but renderer init failed:", _initError);
       return;
     }
     sourceName.textContent = sourceBaseName(payload.source);
@@ -246,6 +285,41 @@ function zoomToElement(expressId: number): void {
   fitCameraToBox(box);
 }
 
+// ── Ray-casting (Phase B) ────────────────────────────────────────────────────
+
+canvas.addEventListener("mousedown", (e) => {
+  _mouseDownPos = { x: e.clientX, y: e.clientY };
+});
+
+canvas.addEventListener("click", (e) => {
+  if (!_mouseDownPos || !camera || !modelGroup) return;
+  const dx = e.clientX - _mouseDownPos.x;
+  const dy = e.clientY - _mouseDownPos.y;
+  _mouseDownPos = null;
+  // Ignore drags (orbit/pan); only act on genuine clicks
+  if (Math.sqrt(dx * dx + dy * dy) > 4) return;
+
+  const rect = canvas.getBoundingClientRect();
+  raycaster.setFromCamera(
+    new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1,
+    ),
+    camera,
+  );
+
+  const meshes: THREE.Object3D[] = [];
+  modelGroup.traverse((obj) => {
+    if ((obj as THREE.Mesh).isMesh) meshes.push(obj);
+  });
+
+  const hits = raycaster.intersectObjects(meshes, false);
+  if (hits.length > 0) {
+    const expressId = (hits[0].object as THREE.Mesh).userData.expressID;
+    if (typeof expressId === "number") selectElement(expressId);
+  }
+});
+
 // ── IFC attribute helpers ─────────────────────────────────────────────────────
 
 function extractAttrValue(val: unknown): string | null {
@@ -256,8 +330,7 @@ function extractAttrValue(val: unknown): string | null {
   if (Array.isArray(val)) return null;
   if (typeof val === "object") {
     const obj = val as Record<string, unknown>;
-    // REF (type=5): relation handle — not a displayable value
-    if (obj["type"] === 5) return null;
+    if (obj["type"] === 5) return null; // REF — skip relation handles
     if ("value" in obj) {
       const v = obj["value"];
       if (v === null || v === undefined || v === "") return null;
@@ -332,23 +405,18 @@ function readPropertySets(api: IfcAPI, modelId: number, expressId: number): PSet
           const prop = api.GetLine(modelId, propId, false) as Record<string, unknown>;
           const propName = extractName(prop) || `#${propId}`;
 
-          // IfcPropertySingleValue → NominalValue
           let propVal: string | null = null;
           const nomVal = prop["NominalValue"];
           if (nomVal && typeof nomVal === "object") {
             propVal = extractAttrValue((nomVal as Record<string, unknown>)["value"]);
           }
-          // IfcQuantity variants
           if (propVal === null) {
             for (const qKey of [
               "LengthValue", "AreaValue", "VolumeValue",
               "CountValue", "WeightValue", "TimeValue",
             ]) {
               const qv = extractAttrValue(prop[qKey]);
-              if (qv !== null) {
-                propVal = qv;
-                break;
-              }
+              if (qv !== null) { propVal = qv; break; }
             }
           }
           if (propVal !== null) props.push({ key: propName, value: propVal });
@@ -373,6 +441,7 @@ function clearModel(): void {
   clearHighlight();
   selectedExpressId = null;
   elementsByCategory = null;
+  spatialRoot = null;
   propSetIndex.clear();
 
   if (modelGroup) {
@@ -395,13 +464,14 @@ function clearModel(): void {
 }
 
 function clearTreeUI(): void {
+  treeModeBar.hidden = true;
   elementTreeEl.innerHTML =
     '<p class="panel-hint">Load an IFC model to browse elements.</p>';
   elementPropsEl.hidden = true;
   elementPropsEl.innerHTML = "";
 }
 
-// ── Property set index (built once per model load) ────────────────────────────
+// ── Property set index ────────────────────────────────────────────────────────
 
 function buildPropSetIndex(api: IfcAPI, modelId: number): void {
   propSetIndex.clear();
@@ -416,16 +486,12 @@ function buildPropSetIndex(api: IfcAPI, modelId: number): void {
           if (!propSetIndex.has(objId)) propSetIndex.set(objId, []);
           propSetIndex.get(objId)!.push(psId);
         }
-      } catch {
-        /* skip individual relation errors */
-      }
+      } catch { /* skip individual relation errors */ }
     }
-  } catch {
-    /* IFCRELDEFINESBYPROPERTIES not present in this model */
-  }
+  } catch { /* IFCRELDEFINESBYPROPERTIES not present */ }
 }
 
-// ── Element index (built once per model load) ─────────────────────────────────
+// ── Element index (Phase A) ───────────────────────────────────────────────────
 
 function buildElementIndex(api: IfcAPI, modelId: number): void {
   const seenIds = new Set<number>();
@@ -445,9 +511,7 @@ function buildElementIndex(api: IfcAPI, modelId: number): void {
         name: extractName(line) || `Element #${expressId}`,
         category: typeCodeToCategory(line["type"] as number),
       });
-    } catch {
-      /* skip unreadable element */
-    }
+    } catch { /* skip unreadable element */ }
   }
 
   const grouped = new Map<string, IFCElement[]>();
@@ -455,19 +519,127 @@ function buildElementIndex(api: IfcAPI, modelId: number): void {
     if (!grouped.has(el.category)) grouped.set(el.category, []);
     grouped.get(el.category)!.push(el);
   }
-  for (const arr of grouped.values()) {
-    arr.sort((a, b) => a.name.localeCompare(b.name));
-  }
+  for (const arr of grouped.values()) arr.sort((a, b) => a.name.localeCompare(b.name));
   elementsByCategory = new Map(
     [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)),
   );
-
-  renderTree();
 }
 
-// ── Tree rendering ────────────────────────────────────────────────────────────
+// ── Spatial tree (Phase B) ────────────────────────────────────────────────────
 
-function renderTree(): void {
+function buildSpatialTree(api: IfcAPI, modelId: number): void {
+  // Fast lookup from expressID → element data (built by buildElementIndex)
+  const elementById = new Map<number, IFCElement>();
+  if (elementsByCategory) {
+    for (const els of elementsByCategory.values()) {
+      for (const el of els) elementById.set(el.expressId, el);
+    }
+  }
+
+  // 1. Decomposition map: parentId → childIds (IFCRELAGGREGATES)
+  const decomposedBy = new Map<number, number[]>();
+  try {
+    const relIds = api.GetLineIDsWithType(modelId, IFCRELAGGREGATES);
+    for (let i = 0; i < relIds.size(); i++) {
+      try {
+        const rel = api.GetLine(modelId, relIds.get(i), false) as Record<string, unknown>;
+        const parentId = resolveRef(rel["RelatingObject"]);
+        if (parentId === null) continue;
+        const childIds = resolveRefArray(rel["RelatedObjects"]);
+        const existing = decomposedBy.get(parentId) ?? [];
+        decomposedBy.set(parentId, existing.concat(childIds));
+      } catch { /* skip */ }
+    }
+  } catch { /* IFCRELAGGREGATES not available */ }
+
+  // 2. Containment map: structureId → element expressIds (IFCRELCONTAINEDINSPATIALSTRUCTURE)
+  const containedIn = new Map<number, number[]>();
+  try {
+    const relIds = api.GetLineIDsWithType(modelId, IFCRELCONTAINEDINSPATIALSTRUCTURE);
+    for (let i = 0; i < relIds.size(); i++) {
+      try {
+        const rel = api.GetLine(modelId, relIds.get(i), false) as Record<string, unknown>;
+        const structId = resolveRef(rel["RelatingStructure"]);
+        if (structId === null) continue;
+        const elemIds = resolveRefArray(rel["RelatedElements"]);
+        const existing = containedIn.get(structId) ?? [];
+        containedIn.set(structId, existing.concat(elemIds));
+      } catch { /* skip */ }
+    }
+  } catch { /* IFCRELCONTAINEDINSPATIALSTRUCTURE not available */ }
+
+  // 3. Find IfcProject root
+  try {
+    const projectIds = api.GetLineIDsWithType(modelId, IFCPROJECT);
+    if (projectIds.size() === 0) return;
+    spatialRoot = buildSpatialNode(
+      api, modelId, projectIds.get(0), decomposedBy, containedIn, elementById,
+    );
+  } catch { /* skip */ }
+}
+
+function buildSpatialNode(
+  api: IfcAPI,
+  modelId: number,
+  expressId: number,
+  decomposedBy: Map<number, number[]>,
+  containedIn: Map<number, number[]>,
+  elementById: Map<number, IFCElement>,
+): SpatialNode {
+  let name = `#${expressId}`;
+  let typeCode = 0;
+  try {
+    const line = api.GetLine(modelId, expressId, false) as Record<string, unknown>;
+    name = extractName(line) || name;
+    typeCode = line["type"] as number;
+  } catch { /* keep defaults */ }
+
+  const meta = SPATIAL_TYPE_META[typeCode];
+  const typeLabel = meta?.label ?? "Element";
+  const typeCss = meta?.css ?? "other";
+
+  // Recurse into decomposition children (spatial structure: Site → Building → Storey → Space)
+  const children = (decomposedBy.get(expressId) ?? []).map((childId) =>
+    buildSpatialNode(api, modelId, childId, decomposedBy, containedIn, elementById),
+  );
+
+  // Physical elements directly contained in this spatial node
+  const elements = (containedIn.get(expressId) ?? [])
+    .map((eid) => elementById.get(eid))
+    .filter((e): e is IFCElement => e !== undefined)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const totalCount =
+    elements.length +
+    children.reduce((sum, c) => sum + c.totalCount, 0);
+
+  return { expressId, name, typeLabel, typeCss, children, elements, totalCount };
+}
+
+// ── View mode management ──────────────────────────────────────────────────────
+
+function switchViewMode(mode: ViewMode): void {
+  viewMode = mode;
+  btnModeCat.classList.toggle("active", mode === "category");
+  btnModeSpatial.classList.toggle("active", mode === "spatial");
+  btnModeSpatial.disabled = spatialRoot === null;
+  renderActiveTree();
+}
+
+btnModeCat.addEventListener("click", () => switchViewMode("category"));
+btnModeSpatial.addEventListener("click", () => switchViewMode("spatial"));
+
+function renderActiveTree(): void {
+  if (viewMode === "spatial" && spatialRoot !== null) {
+    renderSpatialTree();
+  } else {
+    renderCategoryTree();
+  }
+}
+
+// ── Category tree (Phase A) ───────────────────────────────────────────────────
+
+function renderCategoryTree(): void {
   if (!elementsByCategory || elementsByCategory.size === 0) {
     elementTreeEl.innerHTML =
       '<p class="panel-hint">No elements with geometry found.</p>';
@@ -489,19 +661,9 @@ function renderTree(): void {
 
     const ul = document.createElement("ul");
     ul.className = "tree-list";
-
     for (const el of elements) {
-      const li = document.createElement("li");
-      const btn = document.createElement("button");
-      btn.className = "tree-item";
-      btn.textContent = el.name;
-      btn.title = `${el.name}  (#${el.expressId})`;
-      btn.dataset.eid = String(el.expressId);
-      btn.addEventListener("click", () => selectElement(el.expressId));
-      li.appendChild(btn);
-      ul.appendChild(li);
+      ul.appendChild(makeElementLi(el));
     }
-
     details.appendChild(ul);
     frag.appendChild(details);
   }
@@ -510,11 +672,75 @@ function renderTree(): void {
   elementTreeEl.appendChild(frag);
 }
 
+// ── Spatial tree (Phase B) rendering ─────────────────────────────────────────
+
+function renderSpatialTree(): void {
+  if (!spatialRoot) {
+    elementTreeEl.innerHTML =
+      '<p class="panel-hint">No spatial structure found in this model.</p>';
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  appendSpatialNode(spatialRoot, frag);
+  elementTreeEl.innerHTML = "";
+  elementTreeEl.appendChild(frag);
+}
+
+function appendSpatialNode(
+  node: SpatialNode,
+  parent: DocumentFragment | HTMLElement,
+): void {
+  // Leaf nodes with no children and no elements are skipped (no geometry attached)
+  if (node.children.length === 0 && node.elements.length === 0) return;
+
+  const details = document.createElement("details");
+  details.className = `tree-cat snode-${node.typeCss}`;
+  details.open = node.typeCss !== "space"; // collapse spaces by default
+
+  const summary = document.createElement("summary");
+  summary.innerHTML =
+    `<span class="snode-type">${escHtml(node.typeLabel)}</span>` +
+    `<span class="cat-label">${escHtml(node.name)}</span>` +
+    `<span class="cat-count">${node.totalCount}</span>`;
+  details.appendChild(summary);
+
+  // Direct elements at this node
+  if (node.elements.length > 0) {
+    const ul = document.createElement("ul");
+    ul.className = "tree-list";
+    for (const el of node.elements) ul.appendChild(makeElementLi(el));
+    details.appendChild(ul);
+  }
+
+  // Child spatial nodes
+  for (const child of node.children) {
+    appendSpatialNode(child, details);
+  }
+
+  parent.appendChild(details);
+}
+
+// ── Shared element list item ──────────────────────────────────────────────────
+
+function makeElementLi(el: IFCElement): HTMLLIElement {
+  const li = document.createElement("li");
+  const btn = document.createElement("button");
+  btn.className = "tree-item";
+  if (el.expressId === selectedExpressId) btn.classList.add("selected");
+  btn.textContent = el.name;
+  btn.title = `${el.name}  (#${el.expressId})`;
+  btn.dataset.eid = String(el.expressId);
+  btn.addEventListener("click", () => selectElement(el.expressId));
+  li.appendChild(btn);
+  return li;
+}
+
 // ── Element selection ─────────────────────────────────────────────────────────
 
 function selectElement(expressId: number): void {
-  // Toggle: click the same element again to deselect
   if (selectedExpressId === expressId) {
+    // Toggle deselection
     selectedExpressId = null;
     clearHighlight();
     elementPropsEl.hidden = true;
@@ -535,11 +761,18 @@ function selectElement(expressId: number): void {
   btn?.classList.add("selected");
   btn?.scrollIntoView({ block: "nearest" });
 
-  // Zoom + highlight in the 3D viewport
+  // Ensure the containing <details> are open so the button is visible
+  let parent = btn?.parentElement;
+  while (parent && parent !== elementTreeEl) {
+    if (parent.tagName === "DETAILS") (parent as HTMLDetailsElement).open = true;
+    parent = parent.parentElement;
+  }
+
+  // 3D viewport: zoom + highlight
   zoomToElement(expressId);
   highlightElement(expressId);
 
-  // Show properties
+  // Properties panel
   if (ifcApi !== null && currentModelId !== null) {
     const direct = readDirectAttrs(ifcApi, currentModelId, expressId);
     const psets = readPropertySets(ifcApi, currentModelId, expressId);
@@ -731,17 +964,26 @@ async function loadIfc(payload: ViewerPayload): Promise<void> {
   if (modelGroup) fitCameraToModel(modelGroup);
   setStatus(`IFC loaded: ${meshCount} elements. Indexing...`);
 
+  // Build Phase A indexes
   buildPropSetIndex(api, modelId);
   buildElementIndex(api, modelId);
 
-  setStatus(`IFC ready: ${meshCount} elements`);
+  // Build Phase B spatial tree
+  buildSpatialTree(api, modelId);
+
+  // Show mode bar; activate category view by default; spatial if structure found
+  treeModeBar.hidden = false;
+  btnModeSpatial.disabled = spatialRoot === null;
+  viewMode = spatialRoot !== null ? "spatial" : "category";
+  btnModeCat.classList.toggle("active", viewMode === "category");
+  btnModeSpatial.classList.toggle("active", viewMode === "spatial");
+  renderActiveTree();
+
+  const hasSpatial = spatialRoot !== null ? " · spatial structure available" : "";
+  setStatus(`IFC ready: ${meshCount} elements${hasSpatial}`);
 }
 
 // ── WebGL initialisation ──────────────────────────────────────────────────────
-// Three attempts in order of decreasing quality:
-//   1. Standard WebGL with antialias
-//   2. Low-power hardware WebGL
-//   3. Explicit software context (enables SwiftShader with --enable-unsafe-swiftshader)
 
 try {
   try {
@@ -798,8 +1040,6 @@ try {
 }
 
 // ── Poll /current.json ────────────────────────────────────────────────────────
-// The Python subprocess increments "version" each time set_ifc_path() is called.
-// We reload only when the version changes, without restarting the subprocess.
 
 let _pollVersion = -1;
 
@@ -833,7 +1073,6 @@ async function pollCurrentIfc(): Promise<void> {
   }
 }
 
-// Initial poll after 800 ms (let WASM init settle), then every 1.5 s.
 setTimeout(() => {
   void pollCurrentIfc();
   setInterval(() => void pollCurrentIfc(), 1500);

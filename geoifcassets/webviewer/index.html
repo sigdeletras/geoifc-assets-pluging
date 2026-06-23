@@ -19,6 +19,10 @@
           <strong id="source-name">No IFC selected</strong>
           <span id="source-kind" hidden></span>
         </div>
+        <div class="tree-mode-bar" id="tree-mode-bar" hidden>
+          <button class="tree-mode-btn active" id="btn-mode-cat" title="Group by IFC category">Category</button>
+          <button class="tree-mode-btn" id="btn-mode-spatial" title="Browse spatial structure (Project → Site → Building → Storey → Elements)" disabled>Spatial</button>
+        </div>
         <div id="element-tree" class="panel-tree" role="tree" aria-label="IFC elements">
           <p class="panel-hint">Load an IFC model to browse elements.</p>
         </div>
