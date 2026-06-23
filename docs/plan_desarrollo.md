@@ -402,9 +402,12 @@ Responsable de:
 * navegacion del modelo (orbita, zoom, pan)
 * actualizacion del modelo al cambiar feature seleccionado en QGIS
 * reinicio automatico del subproceso si este termina
-* exploracion de elementos por categoria IFC (arbol lateral)
-* zoom de camara al elemento seleccionado en el arbol
+* exploracion de elementos por categoria IFC (arbol plano — Fase A)
+* exploracion por jerarquia espacial Proyecto → Sitio → Edificio → Planta → Espacio (arbol espacial — Fase B)
+* seleccion de elemento por clic en la escena 3D via ray-casting (Fase B)
+* zoom de camara al elemento seleccionado en el arbol o en la escena 3D
 * consulta de atributos directos y PropertySets del elemento seleccionado
+* transferencia de propiedades BIM a campos GIS via POST /transfer + QDialog (Fase C)
 
 Tecnologias:
 
@@ -716,39 +719,67 @@ Como tecnico GIS, quiero aplicar un perfil sectorial a un feature, para cargar p
 
 ---
 
-### HU-E04 Generar huella geografica de un IFC georreferenciado como capa temporal
+### HU-E04 Generar huella geografica de una planta IFC georreferenciada como capa temporal
 
-Como tecnico GIS, quiero que el complemento genere automaticamente el contorno 2D de un modelo IFC georreferenciado y lo presente como capa temporal en QGIS, para verificar su localizacion geografica real sin necesidad de importar geometria BIM de forma permanente.
+Como tecnico GIS, quiero seleccionar una planta de un modelo IFC georreferenciado y cargar su geometria 2D como capa temporal en QGIS, para verificar y situar geograficamente una planta concreta del edificio sin importar geometria BIM de forma permanente.
 
 Criterios de aceptacion:
 
-* El sistema detecta si el IFC abierto contiene informacion de georreferenciacion completa mediante `IfcMapConversion` e `IfcCoordinateReferenceSystem` (IFC4+).
-* Si no existe `IfcMapConversion` o no se puede identificar un CRS, el sistema informa al usuario con un mensaje claro y no genera la capa.
-* Si solo existe `IfcSite.RefLatitude`/`RefLongitude` sin `IfcMapConversion`, el sistema advierte de la limitacion de precision y no genera la capa.
-* Si la georreferenciacion es completa, el sistema extrae la geometria 3D del modelo (priorizando elementos `IfcSlab` e `IfcWall` para reducir coste computacional).
-* El sistema aplica la transformacion de coordenadas de `IfcMapConversion` (offset, rotacion, escala) usando `ifcopenshell.util.geolocation`.
-* El sistema proyecta los vertices al plano 2D y calcula el convex hull como huella del edificio.
-* El sistema crea una capa de memoria en QGIS con un unico poligono de huella y el CRS identificado en el IFC.
-* La capa se denomina "IFC Footprint — <nombre_fichero>" y se anade automaticamente al proyecto QGIS activo.
+**Deteccion de georreferenciacion:**
+
+* El sistema detecta si el IFC abierto contiene georreferenciacion completa mediante `IfcMapConversion` e `IfcCoordinateReferenceSystem` (IFC4+).
+* Si no existe `IfcMapConversion` o no se puede identificar un CRS valido, el sistema informa al usuario con un mensaje claro y no genera la capa.
+* Si solo existe `IfcSite.RefLatitude`/`RefLongitude` sin `IfcMapConversion`, el sistema advierte de la limitacion y no procede.
+
+**Seleccion de planta:**
+
+* El sistema lee los elementos `IfcBuildingStorey` del modelo y presenta al usuario una lista de plantas disponibles, ordenadas por elevation.
+* Cada entrada de la lista muestra el nombre del `IfcBuildingStorey` y su cota de referencia cuando este disponible.
+* El usuario selecciona una planta de la lista antes de generar la capa.
+* Si el modelo no contiene `IfcBuildingStorey`, el sistema informa al usuario y no genera la capa.
+
+**Generacion de geometria:**
+
+* El sistema obtiene los elementos `IfcSlab` contenidos en el `IfcBuildingStorey` seleccionado mediante `IfcRelContainedInSpatialStructure`.
+* Si el storey no contiene `IfcSlab`, el sistema usa todos los elementos del storey como fallback e informa al usuario de esta situacion.
+* El sistema extrae la geometria 3D de los elementos seleccionados usando IfcOpenShell con coordenadas de mundo (`USE_WORLD_COORDS`).
+* El sistema proyecta los vertices al plano XY (descarta Z) y calcula la union de las geometrias resultantes.
+* Si la union produce una geometria no valida o vacia, el sistema informa al usuario y no genera la capa.
+
+**Transformacion de coordenadas:**
+
+* El sistema aplica la transformacion de `IfcMapConversion` (Eastings, Northings, OrthogonalHeight, rotacion, escala) usando `ifcopenshell.util.geolocation`.
+* El CRS de la capa generada corresponde al identificado en `IfcCoordinateReferenceSystem` del modelo.
+
+**Capa QGIS:**
+
+* El sistema crea una capa de memoria en QGIS de tipo Polygon con el CRS detectado.
+* La capa contiene un unico feature con la geometria de la planta seleccionada y los atributos: nombre del storey, cota de referencia, nombre del fichero IFC y CRS identificado.
+* La capa se denomina "IFC Floor — <nombre_storey> — <nombre_fichero>" y se anade automaticamente al proyecto QGIS activo.
 * La capa es temporal y no persiste entre sesiones de QGIS.
-* El sistema registra en developer logs el CRS detectado, el numero de vertices procesados y el resultado de la transformacion.
-* El sistema muestra un mensaje de usuario al completar la operacion o al informar de cualquier limitacion.
-* La huella se puede generar desde el panel del complemento cuando hay un IFC abierto en el visor.
+* Se puede generar una nueva capa para una planta diferente sin eliminar las anteriores.
+
+**Operacion y feedback:**
+
+* La operacion se lanza desde el panel del complemento cuando hay un IFC abierto en el visor.
+* El sistema registra en developer logs el CRS detectado, el storey seleccionado, el numero de elementos procesados y el resultado de la transformacion.
+* El sistema muestra mensajes de usuario al completar la operacion o al informar de cualquier limitacion o error.
+* Los mensajes de usuario estan disponibles en ingles y espanol.
 
 Restricciones tecnicas:
 
-* La lectura de georreferenciacion se implementa en `adapters/ifc/`.
-* La creacion de la capa temporal se implementa en `adapters/qgis/`.
+* La deteccion de georreferenciacion y la lectura de storeys y geometria se implementan en `adapters/ifc/`.
+* La creacion de la capa temporal y el selector de planta se implementan en `adapters/qgis/`.
 * No se importa geometria IFC como capa GIS permanente.
 * Se usa `ifcopenshell.util.geolocation` para la transformacion de coordenadas.
-* Se usa `shapely` para el calculo del convex hull (disponible en el entorno QGIS).
+* Se usa `shapely` para la union de geometrias (disponible en el entorno QGIS).
 * No se importa `shapely` ni `IfcOpenShell` desde codigo del nucleo (`core/`).
-* La operacion no bloquea la interfaz de QGIS; si el modelo es grande, debe ejecutarse con feedback de progreso.
+* La operacion no bloquea la interfaz de QGIS; si el modelo es grande, debe ejecutarse con feedback de progreso o en un hilo separado.
 
 Condicion de activacion:
 
 * Requiere que el IFC este abierto en el visor embebido (HU-02 completada).
-* Se activa solo cuando el IFC tiene georreferenciacion completa detectable.
+* Se activa solo cuando el IFC tiene georreferenciacion completa via `IfcMapConversion`.
 * Esta historia es evolutiva y no forma parte del MVP. Se implementa tras validar el flujo manual de propiedades (HU-05 a HU-08).
 
 ---

@@ -18,52 +18,54 @@ flowchart TB
         swiftshader["_ensure_swiftshader_flag()"]
         selectFeat["_select_feature()"]
         openRef["viewer_dock.open_reference()"]
+        handleTransfer["plugin._handle_transfer(data)"]
+        showDialog["_show_transfer_dialog → QDialog → changeAttributeValue"]
 
         subgraph Dock["IfcViewerDock · QVBoxLayout"]
-            srcLabel["_source_label"]
-            container["_container"]
-            statusLabel["_status_label"]
+            srcLabel["_source_label (ruta IFC)"]
+            statusLabel["_status_label (estado proceso)"]
+            timer["QTimer 250 ms → _poll_transfers()"]
         end
 
         subgraph Server["IfcHttpServer · ThreadingHTTP :puerto"]
-            indexHtml["/index.html"]
+            indexHtml["/index.html + /assets/*"]
             modeloIfc["/modelo.ifc"]
             currentJson["/current.json"]
+            transferPost["POST /transfer → _pending_transfers queue"]
         end
 
         initGui --> swiftshader
-        selectFeat --> openRef --> container
+        selectFeat --> openRef --> srcLabel
+        openRef -->|"set_ifc_path"| modeloIfc
+        timer -->|"pop_pending_transfer()"| transferPost
+        timer --> handleTransfer --> showDialog
     end
 
     QProc["QProcess\npython3.exe webviewer_app.py puerto url"]
 
-    subgraph Sub["SUBPROCESO Python — webviewer_app.py"]
+    subgraph Sub["SUBPROCESO Python — webviewer_app.py (ventana flotante)"]
         App["QApplication · setQuitOnLastWindowClosed=False"]
-        ViewWin["_ViewerWindow · QWebEngineView"]
-        closeEv["closeEvent → app.quit()"]
-        renderEv["renderProcessTerminated → view.load(url)"]
-        WinId["HWND / XID"]
-        readyPrint["print READY:win_id → QProcess stdout"]
+        ViewWin["_ViewerWindow · QWebEngineView · view.show()"]
+        readyPrint["print READY:win_id → stdout → _status_label"]
 
-        subgraph Chromium["Chromium (proceso fresco)"]
-            envFlags["QTWEBENGINE_CHROMIUM_FLAGS · SwiftShader activo"]
+        subgraph Chromium["Chromium (proceso fresco, flags SwiftShader)"]
             webIfc["web-ifc WASM"]
-            threeJs["Three.js WebGLRenderer (SwiftShader fallback)"]
-            geoViewer["window.GeoIfcViewer.openReference(payload)"]
+            threeJs["Three.js WebGLRenderer"]
             polling["polling /current.json cada 1.5 s"]
             loadIfc["version cambia → fetch /modelo.ifc → cargar IFC"]
+            transferBtn["botón → prop-transfer → fetch POST /transfer"]
         end
 
-        App --> ViewWin --> closeEv & renderEv
-        ViewWin --> WinId --> readyPrint
+        App --> ViewWin --> readyPrint
         polling --> loadIfc
     end
 
-    Dock -->|"lanza"| QProc
+    Dock -->|"QProcess.start"| QProc
     QProc -->|"inicia"| Sub
-    readyPrint -->|"createWindowContainer"| container
+    readyPrint -->|"actualiza"| statusLabel
     loadIfc -->|"GET"| modeloIfc
     polling -->|"GET"| currentJson
+    transferBtn -->|"POST {pset,key,value}"| transferPost
 ```
 
 ---
@@ -103,18 +105,21 @@ which("python3")         ← fallback del sistema
 
 ### `IfcHttpServer` — `viewer.py`
 
-Servidor `ThreadingHTTPServer` que corre en un hilo demonio. Expone tres recursos:
+Servidor `ThreadingHTTPServer` que corre en un hilo demonio. Expone los siguientes recursos:
 
-| Ruta | Descripción |
-|---|---|
-| `GET /index.html` | Fichero HTML del visor (delegado a `SimpleHTTPRequestHandler`) |
-| `GET /assets/*` | Bundle JS de viewer.ts compilado por Vite |
-| `GET /modelo.ifc` | Sirve el fichero IFC activo desde disco local sin copiarlo |
-| `GET /current.json` | `{"version": N, "ifc_url": "/modelo.ifc" \| null}` — counter de versión |
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/index.html` | Fichero HTML del visor (delegado a `SimpleHTTPRequestHandler`) |
+| `GET` | `/assets/*` | Bundle JS de viewer.ts compilado por Vite |
+| `GET` | `/modelo.ifc` | Sirve el fichero IFC activo desde disco local sin copiarlo |
+| `GET` | `/current.json` | `{"version": N, "ifc_url": "/modelo.ifc" \| null}` — counter de versión |
+| `POST` | `/transfer` | Recibe `{ pset, key, value }` del JS; encola en `_pending_transfers` |
 
 `set_ifc_path(path)` incrementa el contador de versión. El JS detecta el cambio en el siguiente ciclo de polling y solicita el nuevo IFC.
 
-**Thread-safety:** un `threading.Lock` protege la escritura de `_ifc_path` y `_version`, ya que el hilo del servidor y el hilo principal de QGIS acceden concurrentemente.
+`pop_pending_transfer()` extrae y devuelve la primera transferencia de la cola (o `None`). Se llama desde `IfcViewerDock._poll_transfers()` en el hilo Qt principal.
+
+**Thread-safety:** un `threading.Lock` protege `_ifc_path`, `_version` y `_pending_transfers`, ya que el hilo del servidor HTTP y el hilo principal de QGIS acceden concurrentemente.
 
 ---
 
@@ -127,39 +132,41 @@ Gestiona el ciclo de vida del subproceso y la integración con el layout del doc
 | Atributo | Tipo | Descripción |
 |---|---|---|
 | `_proc` | `QProcess \| None` | Proceso del subproceso visor |
-| `_container` | `QWidget \| None` | Widget container del embedding |
-| `_viewer_placeholder` | `QLabel` | Label visible mientras el subprocess arranca o está parado |
 | `_http_server` | `IfcHttpServer` | Servidor HTTP embebido |
+| `_on_transfer` | `Callable[[dict], None] \| None` | Callback invocado al recibir una transferencia BIM→GIS |
+| `_transfer_timer` | `QTimer` | Timer a 250 ms que hace polling de `_http_server.pop_pending_transfer()` |
+| `_source_label` | `QLabel` | Muestra la ruta IFC activa |
+| `_status_label` | `QLabel` | Estado del subproceso (arrancando / activo / detenido) |
 
 **Ciclo de vida del subproceso:**
 
 ```
-__init__()
+__init__(on_transfer)
+  ├── IfcHttpServer.start()              ← servidor HTTP en hilo demonio
+  ├── QTimer(250 ms) → _poll_transfers() ← canal inverso BIM→GIS
   └── _launch_subprocess()
         └── QProcess.start(python3.exe, [webviewer_app.py, puerto, url])
 
 QProcess.readyReadStandardOutput → _on_proc_stdout()
-  └── línea "READY:<win_id>" → _embed_subprocess_window(win_id)
-        ├── QWindow.fromWinId(win_id)
-        ├── QWidget.createWindowContainer(foreign_window, self.widget)
-        └── layout.insertWidget(1, container, 1)
+  └── línea "READY:<win_id>" → _status_label.setText("IFC viewer window open …")
+        (el subproceso muestra su propia ventana flotante QWebEngineView)
 
 open_reference(reference)
-  ├── _http_server.set_ifc_path(local_path)  ← incrementa versión
+  ├── _http_server.set_ifc_path(local_path)  ← incrementa versión JSON
   └── si _proc is None → _launch_subprocess()  ← reinicio bajo demanda
 
+QTimer.timeout → _poll_transfers()
+  ├── _http_server.pop_pending_transfer()  → dict | None
+  └── si hay transferencia → on_transfer(data)  ← hilo Qt principal
+
 QProcess.finished → _on_proc_finished()
-  ├── _clear_embedded_window()
   └── self._proc = None
 
-destroy()  (llamado en unload del plugin)
+destroy()  (llamado en GeoIfcAssetsPlugin.unload)
   ├── _stop_subprocess()
-  │     ├── _clear_embedded_window()  ← PRIMERO: libera referencia QWindow
   │     └── proc.kill() + waitForFinished(2000)
   └── _http_server.stop()
 ```
-
-**Regla de orden crítica:** `_clear_embedded_window()` **siempre** se llama **antes** de `proc.kill()`. Si se mata el proceso antes de liberar la referencia Qt a su HWND, se puede producir un acceso a memoria nativa inválida.
 
 ---
 
@@ -182,17 +189,18 @@ except ImportError:
 1. QApplication(sys.argv[:1])
 2. app.setQuitOnLastWindowClosed(False)
 3. view = _ViewerWindow()          ← QWebEngineView con closeEvent override
-4. view.resize(1280, 800)
-5. view.load(QUrl(viewer_url))
-6. view.show()                     ← crea el HWND nativo
-7. view.hide()                     ← oculta antes del embedding (sin flash visual)
+4. view.setWindowTitle("GeoIFC Assets — IFC Viewer")
+5. view.resize(1280, 800)
+6. view.load(QUrl(viewer_url))
+7. view.show()                     ← ventana flotante independiente (no embebida)
 8. win_id = int(view.winId())
-9. print(f"READY:{win_id}")        ← notifica al proceso QGIS
+9. print(f"READY:{win_id}")        ← notifica al proceso QGIS (actualiza _status_label)
 10. view.page().renderProcessTerminated.connect(_on_render_crash)
-11. app.exec()
+11. [Windows] stdin polling ignorado (select no disponible)
+12. app.exec()
 ```
 
-El `view.hide()` en el paso 7 es importante: el HWND ya existe (necesario para `winId()`), pero la ventana no es visible para el usuario. El dock QGIS la embebe en decenas de milisegundos, momento en que aparece directamente en el panel sin flash de ventana flotante.
+La ventana QWebEngineView aparece como ventana flotante independiente del dock QGIS. El dock sólo gestiona el proceso y sirve los assets IFC vía HTTP; la UI 3D vive en el subproceso.
 
 **Gestión de crashes del renderer:**
 
@@ -306,8 +314,9 @@ Las URLs remotas se registran como advertencia y el servidor no expone `/modelo.
 
 | Componente | Tecnología | Notas |
 |---|---|---|
-| Gestión subprocess | `QProcess` (qgis.PyQt.QtCore) | Sin `subprocess.Popen`; permite captura de stdout por señales Qt |
-| Embedding ventana | `QWindow.fromWinId` + `QWidget.createWindowContainer` | Qt5/Qt6, cross-platform |
+| Gestión subprocess | `QProcess` (qgis.PyQt.QtCore) | Sin `subprocess.Popen`; captura stdout/stderr por señales Qt |
+| Ventana visor | `QWebEngineView` en subproceso (ventana flotante) | Evita conflicto con Chromium ya inicializado por QGIS |
+| Canal inverso | `POST /transfer` + `QTimer` 250 ms | Hilo HTTP → cola → hilo Qt principal |
 | Servidor HTTP | `http.server.ThreadingHTTPServer` | Nativo Python, sin dependencias externas |
 | Runtime JS IFC | `web-ifc` 0.0.77 (WASM, bundleado offline) | No requiere conexión a internet |
 | Renderizado 3D | `Three.js` r177+ (bundleado offline) | Con fallback SwiftShader |
