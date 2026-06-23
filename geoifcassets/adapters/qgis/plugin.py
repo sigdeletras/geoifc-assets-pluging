@@ -82,7 +82,7 @@ class GeoIfcAssetsPlugin:
         from qgis.PyQt.QtCore import Qt
 
         if self._dock is None:
-            self._viewer_dock = IfcViewerDock()
+            self._viewer_dock = IfcViewerDock(on_transfer=self._handle_transfer)
             self._dock = GeoIfcAssetsDock(
                 on_refresh_layers=self._available_ifc_layers,
                 on_layer_selected=self._features_for_layer,
@@ -219,6 +219,129 @@ class GeoIfcAssetsPlugin:
             ifc_read_status=read_result.status.value,
             ifc_schema=read_result.summary.schema if read_result.summary else None,
         )
+
+    def _handle_transfer(self, data: dict) -> None:
+        """Receive a BIM→GIS transfer request from the viewer (Qt main thread)."""
+        self._logger.info("BIM→GIS transfer received", pset=data.get("pset"), key=data.get("key"))
+        self._show_transfer_dialog(data)
+
+    def _show_transfer_dialog(self, data: dict) -> None:
+        """Open a dialog that maps one BIM property value onto a GIS layer field."""
+        from qgis.PyQt.QtWidgets import (
+            QComboBox,
+            QDialog,
+            QDialogButtonBox,
+            QFormLayout,
+            QLabel,
+            QVBoxLayout,
+        )
+
+        layer = self._selected_layer
+        feature = self._selected_feature
+        if layer is None or feature is None:
+            self._messages.warning(
+                tr("GeoIfcAssets", "No GIS feature selected. Select a feature before transferring.")
+            )
+            return
+
+        pset = data.get("pset", "")
+        key = data.get("key", "")
+        value = str(data.get("value", ""))
+
+        dlg = QDialog()
+        dlg.setWindowTitle(tr("GeoIfcAssets", "Transfer BIM property to GIS"))
+        dlg.setMinimumWidth(400)
+
+        outer = QVBoxLayout(dlg)
+
+        form = QFormLayout()
+        pset_label = pset if pset else tr("GeoIfcAssets", "Attributes")
+        form.addRow(tr("GeoIfcAssets", "Property set:"), QLabel(pset_label))
+        form.addRow(tr("GeoIfcAssets", "Property:"), QLabel(key))
+        form.addRow(tr("GeoIfcAssets", "Value:"), QLabel(value))
+        outer.addLayout(form)
+
+        outer.addSpacing(8)
+        outer.addWidget(
+            QLabel(
+                tr("GeoIfcAssets", "Target field in layer «{layer}»:").format(
+                    layer=layer.name()
+                )
+            )
+        )
+
+        fields = [field.name() for field in layer.fields()]
+        combo = QComboBox()
+        combo.addItems(fields)
+        combo.setEditable(True)
+        outer.addWidget(combo)
+
+        try:
+            ok_cancel = QDialogButtonBox.Ok | QDialogButtonBox.Cancel  # type: ignore[attr-defined]
+        except AttributeError:
+            ok_cancel = (
+                QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            )
+        buttons = QDialogButtonBox(ok_cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        outer.addWidget(buttons)
+
+        if not dlg.exec():
+            return
+
+        field_name = combo.currentText().strip()
+        if not field_name:
+            return
+
+        if field_name not in fields:
+            from qgis.PyQt.QtCore import QVariant
+            from qgis.core import QgsField
+
+            layer.startEditing()
+            layer.addAttribute(QgsField(field_name, QVariant.String))
+            if not layer.commitChanges():
+                self._messages.warning(
+                    tr("GeoIfcAssets", "Could not add field «{field}» to layer.").format(
+                        field=field_name
+                    )
+                )
+                return
+
+        field_index = layer.fields().indexOf(field_name)
+        if field_index < 0:
+            self._messages.warning(
+                tr("GeoIfcAssets", "Field «{field}» not found in layer.").format(field=field_name)
+            )
+            return
+
+        feature_id = feature.id()
+        layer.startEditing()
+        ok = layer.changeAttributeValue(feature_id, field_index, value)
+        if ok:
+            layer.commitChanges()
+            msg = tr(
+                "GeoIfcAssets",
+                "BIM property «{key}» → GIS field «{field}» written.",
+            ).format(key=key, field=field_name)
+            self._messages.info(msg)
+            if self._dock is not None:
+                self._dock.add_user_log(msg)
+            self._logger.info(
+                "BIM→GIS transfer complete",
+                key=key,
+                value=value,
+                layer=layer.name(),
+                field=field_name,
+                feature_id=feature_id,
+            )
+        else:
+            layer.rollBack()
+            self._messages.warning(
+                tr("GeoIfcAssets", "Could not write value to field «{field}».").format(
+                    field=field_name
+                )
+            )
 
     def _message_for_read_result(self, result: FeatureIfcReferenceReadResult) -> str:
         if result.status is FeatureReadStatus.OK and result.reference is not None:

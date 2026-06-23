@@ -782,6 +782,41 @@ function selectElement(expressId: number): void {
 
 // ── Props rendering ───────────────────────────────────────────────────────────
 
+function propRow(pset: string, key: string, value: string): string {
+  return (
+    `<div class="prop-row">` +
+    `<span class="prop-key">${escHtml(key)}</span>` +
+    `<span class="prop-val">${escHtml(value)}</span>` +
+    `<button class="prop-transfer" ` +
+    `data-pset="${escHtml(pset)}" data-key="${escHtml(key)}" data-val="${escHtml(value)}" ` +
+    `title="Transfer to GIS field">→</button>` +
+    `</div>`
+  );
+}
+
+function transferProp(pset: string, key: string, value: string, btn: HTMLButtonElement): void {
+  btn.disabled = true;
+  fetch(`${window.location.origin}/transfer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pset, key, value }),
+  })
+    .then((r) => {
+      if (r.ok) {
+        btn.textContent = "✓";
+        btn.classList.add("prop-sent");
+        btn.style.opacity = "1";
+      } else {
+        btn.classList.add("prop-error");
+        btn.disabled = false;
+      }
+    })
+    .catch(() => {
+      btn.classList.add("prop-error");
+      btn.disabled = false;
+    });
+}
+
 function renderProps(expressId: number, direct: PropEntry[], psets: PSet[]): void {
   const el = elementsByCategory
     ? [...elementsByCategory.values()].flat().find((e) => e.expressId === expressId)
@@ -802,12 +837,7 @@ function renderProps(expressId: number, direct: PropEntry[], psets: PSet[]): voi
   if (direct.length > 0) {
     parts.push(`<div class="pset-block"><div class="pset-name">Attributes</div>`);
     for (const { key, value } of direct) {
-      parts.push(
-        `<div class="prop-row">` +
-        `<span class="prop-key">${escHtml(key)}</span>` +
-        `<span class="prop-val">${escHtml(value)}</span>` +
-        `</div>`,
-      );
+      parts.push(propRow("", key, value));
     }
     parts.push(`</div>`);
   }
@@ -817,12 +847,7 @@ function renderProps(expressId: number, direct: PropEntry[], psets: PSet[]): voi
       `<div class="pset-block"><div class="pset-name">${escHtml(pset.name)}</div>`,
     );
     for (const { key, value } of pset.props) {
-      parts.push(
-        `<div class="prop-row">` +
-        `<span class="prop-key">${escHtml(key)}</span>` +
-        `<span class="prop-val">${escHtml(value)}</span>` +
-        `</div>`,
-      );
+      parts.push(propRow(pset.name, key, value));
     }
     parts.push(`</div>`);
   }
@@ -834,6 +859,13 @@ function renderProps(expressId: number, direct: PropEntry[], psets: PSet[]): voi
   parts.push(`</div>`);
 
   elementPropsEl.innerHTML = parts.join("\n");
+
+  elementPropsEl.querySelectorAll<HTMLButtonElement>(".prop-transfer").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      transferProp(btn.dataset.pset ?? "", btn.dataset.key ?? "", btn.dataset.val ?? "", btn);
+    });
+  });
+
   elementPropsEl.hidden = false;
 }
 

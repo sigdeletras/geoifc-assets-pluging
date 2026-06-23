@@ -109,6 +109,8 @@ class IfcHttpServer:
     - ``/current.json``   — returns ``{"version": N, "ifc_url": "/modelo.ifc" | null}``
                             polled by the viewer JS to detect IFC changes without
                             restarting the subprocess.
+    - ``POST /transfer``  — receives a BIM→GIS transfer request from the viewer JS;
+                            stored in a queue and consumed by :meth:`pop_pending_transfer`.
     """
 
     def __init__(self, webviewer_dir: Path) -> None:
@@ -117,6 +119,7 @@ class IfcHttpServer:
         self._thread: threading.Thread | None = None
         self._ifc_path: str = ""
         self._version: int = 0
+        self._pending_transfers: list[dict] = []
         self._lock: threading.Lock = threading.Lock()
         self.port: int = 0
 
@@ -143,6 +146,12 @@ class IfcHttpServer:
                 else:
                     super().do_GET()
 
+            def do_POST(self) -> None:  # noqa: N802
+                if self.path == "/transfer":
+                    self._receive_transfer()
+                else:
+                    self.send_error(404)
+
             def _serve_current(self) -> None:
                 with server_self._lock:
                     version = server_self._version
@@ -151,6 +160,26 @@ class IfcHttpServer:
                     "version": version,
                     "ifc_url": "/modelo.ifc" if ifc_path else None,
                 }).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def _receive_transfer(self) -> None:
+                length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(length)
+                try:
+                    data = json.loads(body)
+                except json.JSONDecodeError as exc:
+                    _log.warning("Invalid JSON in /transfer body: %s", exc)
+                    self.send_error(400, "Bad JSON")
+                    return
+                _log.info("BIM→GIS transfer queued: %s", data)
+                with server_self._lock:
+                    server_self._pending_transfers.append(data)
+                payload = b'{"ok":true}'
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))
@@ -190,6 +219,11 @@ class IfcHttpServer:
             self._version += 1
         _log.info("IFC HTTP server path set (version %d): %s", self._version, path)
 
+    def pop_pending_transfer(self) -> dict | None:
+        """Return and remove the oldest queued BIM→GIS transfer, or None."""
+        with self._lock:
+            return self._pending_transfers.pop(0) if self._pending_transfers else None
+
     def stop(self) -> None:
         if self._server is not None:
             self._server.shutdown()
@@ -208,13 +242,21 @@ class IfcViewerDock:
     The subprocess communicates with the HTTP server via polling ``/current.json``
     every 1.5 s, so selecting a new feature updates the viewer without restarting
     the subprocess.
+
+    The JS viewer POSTs BIM→GIS transfer requests to ``/transfer``. The dock polls
+    for them every 250 ms and calls *on_transfer* (if provided) on the Qt main thread.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        on_transfer: Any | None = None,  # Callable[[dict], None] | None
+    ) -> None:
+        from qgis.PyQt.QtCore import QTimer
         from qgis.PyQt.QtWidgets import QLabel, QVBoxLayout, QWidget
 
         self._pending_reference: IfcReference | None = None
         self._proc: Any | None = None  # QProcess
+        self._on_transfer = on_transfer
 
         webviewer_dir = Path(__file__).resolve().parents[2] / "webviewer"
         _log.info("Webviewer directory: %s (exists=%s)", webviewer_dir, webviewer_dir.exists())
@@ -223,6 +265,9 @@ class IfcViewerDock:
         self._http_server.start()
 
         self.widget = QWidget()
+        self._transfer_timer = QTimer(self.widget)
+        self._transfer_timer.timeout.connect(self._poll_transfers)
+        self._transfer_timer.start(250)
         layout = QVBoxLayout(self.widget)
         layout.setContentsMargins(8, 8, 8, 8)
 
@@ -353,3 +398,13 @@ class IfcViewerDock:
                 code=exit_code
             )
         )
+
+    # ------------------------------------------------------------------
+    # BIM→GIS transfer polling
+    # ------------------------------------------------------------------
+
+    def _poll_transfers(self) -> None:
+        """Called every 250 ms by QTimer; forwards queued transfers to on_transfer."""
+        transfer = self._http_server.pop_pending_transfer()
+        if transfer is not None and self._on_transfer is not None:
+            self._on_transfer(transfer)

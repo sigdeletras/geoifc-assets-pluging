@@ -1195,7 +1195,32 @@ btn?.scrollIntoView({ block: "nearest" });
 
 Esto garantiza que después de seleccionar por clic 3D, el árbol muestra y resalta el elemento seleccionado.
 
-## Evolución pendiente (Fase C)
+## Fase C — Transferencia BIM→GIS (implementada)
 
-- **Transferencia BIM→GIS**: seleccionar una propiedad en el panel y asignarla a un campo de la feature GIS activa en QGIS (requiere canal inverso subproceso → QGIS, pendiente desde ADR-008).
-- **Elementos sin estructura espacial**: elementos con geometría pero sin `IFCRELCONTAINEDINSPATIALSTRUCTURE` no aparecen en el árbol espacial. Fase C puede añadir un nodo "Not placed" para ellos.
+### Problema
+
+El visor corre en un subproceso separado. Para que el usuario pueda copiar una propiedad IFC a un campo GIS necesita un canal de comunicación subproceso → QGIS, no disponible por QWebChannel (el visor usa QWebEngineView en el subproceso).
+
+### Decisión
+
+Se usa el servidor HTTP local ya existente (`IfcHttpServer`) como canal inverso:
+
+1. El JS añade un botón `→` (*prop-transfer*) a cada fila del panel de propiedades.
+2. Al hacer clic, el JS hace `POST /transfer` con `{ pset, key, value }` al mismo origen (`http://127.0.0.1:{port}`).
+3. `IfcHttpServer._receive_transfer` deserializa el JSON y lo almacena en `_pending_transfers` (protegido por `threading.Lock`).
+4. Un `QTimer` a 250 ms en `IfcViewerDock` llama a `_poll_transfers()` en el hilo principal de Qt, extrayendo la primera transferencia con `pop_pending_transfer()`.
+5. La transferencia se pasa al callback `on_transfer` registrado en `GeoIfcAssetsPlugin`.
+6. `GeoIfcAssetsPlugin._show_transfer_dialog()` abre un `QDialog` que permite seleccionar o nombrar el campo GIS de destino y escribe el valor con `layer.changeAttributeValue()`.
+
+### Archivos modificados
+
+| Archivo | Cambios |
+|---|---|
+| `geoifcassets/adapters/qgis/viewer.py` | `IfcHttpServer.do_POST` + `_receive_transfer` + `pop_pending_transfer`; `IfcViewerDock.__init__` + `_poll_transfers` con QTimer 250 ms |
+| `geoifcassets/adapters/qgis/plugin.py` | `_show_dock` pasa `on_transfer`; nuevos métodos `_handle_transfer` + `_show_transfer_dialog` |
+| `webviewer_src/src/viewer.ts` | funciones `propRow`, `transferProp`; actualización de `renderProps` con delegación de eventos |
+| `webviewer_src/src/viewer.css` | estilos `.prop-transfer`, `.prop-sent`, `.prop-error` |
+
+### Pendiente
+
+- **Elementos sin estructura espacial**: elementos con geometría pero sin `IFCRELCONTAINEDINSPATIALSTRUCTURE` no aparecen en el árbol espacial. Se puede añadir un nodo "Not placed" en iteraciones futuras.

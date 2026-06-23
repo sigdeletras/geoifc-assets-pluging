@@ -11,54 +11,59 @@ Las decisiones arquitectónicas que justifican este diseño están formalizadas 
 
 ## Diagrama general
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  PROCESO QGIS                                               │
-│                                                             │
-│  GeoIfcAssetsPlugin                                         │
-│    initGui() → _ensure_swiftshader_flag()                   │
-│    _select_feature() → viewer_dock.open_reference()         │
-│                                   │                         │
-│  IfcViewerDock                    │                         │
-│    QVBoxLayout                    │                         │
-│      _source_label                │                         │
-│      _container  ◄────────────────┘ createWindowContainer   │
-│      _status_label                                          │
-│                   │                                         │
-│  IfcHttpServer    │ QProcess stdout "READY:<win_id>"        │
-│  ThreadingHTTP    │ ◄─────────────────────────────────────  │
-│  :puerto/         │                                         │
-│    /index.html    │                                         │
-│    /modelo.ifc    │                                         │
-│    /current.json  │                                         │
-│         │         │                                         │
-└─────────┼─────────┼─────────────────────────────────────────┘
-          │         │
-          │  QProcess (python3.exe webviewer_app.py <puerto> <url>)
-          │         │
-          ▼         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  SUBPROCESO Python (webviewer_app.py)                       │
-│                                                             │
-│  QApplication (setQuitOnLastWindowClosed=False)             │
-│    _ViewerWindow (QWebEngineView)                           │
-│      closeEvent → app.quit()                                │
-│      renderProcessTerminated → view.load(url)               │
-│                                                             │
-│  HWND / XID ──► print("READY:<win_id>") ──► QProcess stdout │
-│                                                             │
-│  Chromium (proceso fresco)                                  │
-│    Lee QTWEBENGINE_CHROMIUM_FLAGS del entorno               │
-│    SwiftShader activo                                       │
-│                                                             │
-│    index.html + viewer.ts (bundle Vite)                     │
-│      web-ifc WASM                                           │
-│      Three.js WebGLRenderer (SwiftShader fallback)          │
-│      window.GeoIfcViewer.openReference(payload)             │
-│                                                             │
-│    polling /current.json cada 1.5 s                         │
-│      version cambia → fetch /modelo.ifc → cargar IFC       │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph QGIS["PROCESO QGIS"]
+        initGui["initGui()"]
+        swiftshader["_ensure_swiftshader_flag()"]
+        selectFeat["_select_feature()"]
+        openRef["viewer_dock.open_reference()"]
+
+        subgraph Dock["IfcViewerDock · QVBoxLayout"]
+            srcLabel["_source_label"]
+            container["_container"]
+            statusLabel["_status_label"]
+        end
+
+        subgraph Server["IfcHttpServer · ThreadingHTTP :puerto"]
+            indexHtml["/index.html"]
+            modeloIfc["/modelo.ifc"]
+            currentJson["/current.json"]
+        end
+
+        initGui --> swiftshader
+        selectFeat --> openRef --> container
+    end
+
+    QProc["QProcess\npython3.exe webviewer_app.py puerto url"]
+
+    subgraph Sub["SUBPROCESO Python — webviewer_app.py"]
+        App["QApplication · setQuitOnLastWindowClosed=False"]
+        ViewWin["_ViewerWindow · QWebEngineView"]
+        closeEv["closeEvent → app.quit()"]
+        renderEv["renderProcessTerminated → view.load(url)"]
+        WinId["HWND / XID"]
+        readyPrint["print READY:win_id → QProcess stdout"]
+
+        subgraph Chromium["Chromium (proceso fresco)"]
+            envFlags["QTWEBENGINE_CHROMIUM_FLAGS · SwiftShader activo"]
+            webIfc["web-ifc WASM"]
+            threeJs["Three.js WebGLRenderer (SwiftShader fallback)"]
+            geoViewer["window.GeoIfcViewer.openReference(payload)"]
+            polling["polling /current.json cada 1.5 s"]
+            loadIfc["version cambia → fetch /modelo.ifc → cargar IFC"]
+        end
+
+        App --> ViewWin --> closeEv & renderEv
+        ViewWin --> WinId --> readyPrint
+        polling --> loadIfc
+    end
+
+    Dock -->|"lanza"| QProc
+    QProc -->|"inicia"| Sub
+    readyPrint -->|"createWindowContainer"| container
+    loadIfc -->|"GET"| modeloIfc
+    polling -->|"GET"| currentJson
 ```
 
 ---
@@ -459,9 +464,23 @@ Cuando se detecta un clic real:
 
 ---
 
+## Transferencia BIM→GIS (Fase C)
+
+El panel de propiedades añade un botón `→` a cada fila al pasar el ratón. Al hacer clic:
+
+1. El JS llama a `transferProp(pset, key, value, btn)`, que hace `POST /transfer` al mismo origen HTTP.
+2. `IfcHttpServer._receive_transfer` deserializa el cuerpo JSON y lo encola en `_pending_transfers` (protegido con `threading.Lock`).
+3. Un `QTimer` a 250 ms en `IfcViewerDock._poll_transfers()` consume la cola en el hilo Qt principal.
+4. Se invoca el callback `on_transfer` registrado en `GeoIfcAssetsPlugin._handle_transfer`.
+5. `_show_transfer_dialog` abre un `QDialog` con un `QComboBox` editable que lista los campos del layer activo. Si se escribe un nombre nuevo, se crea el campo (`QgsField + layer.addAttribute`). El valor se escribe con `layer.changeAttributeValue`.
+
+El botón queda verde (`prop-sent`) al completarse correctamente, o rojo (`prop-error`) si el POST falla.
+
+---
+
 ## Limitaciones conocidas
 
-- **HU-03 (selección de elemento IFC → QGIS):** No implementada. El canal inverso subproceso → QGIS requiere un mecanismo adicional (endpoint HTTP `POST /selection` o WebSocket). El polling actual es unidireccional.
+- **HU-03 (selección de elemento IFC → QGIS):** Parcialmente implementada mediante POST `/transfer`. El canal inverso está activo para transferencia de propiedades; la selección de geometría IFC → highlight en capa GIS sigue pendiente.
 - **URLs remotas:** El campo `ifc_url` con valor `http://` o `https://` muestra advertencia; el IFC no se carga. Pendiente de implementación.
 - **Latencia:** El polling introduce un retraso de hasta 1,5 s entre selección de feature y actualización del visor.
 - **Arranque inicial:** El subproceso tarda ~1-2 s en arrancar (Chromium + WASM). Durante ese tiempo el dock muestra el placeholder "Starting IFC viewer subprocess…".

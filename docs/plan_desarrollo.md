@@ -429,7 +429,11 @@ La seleccion de un elemento (tanto desde el arbol como por clic en la escena 3D 
 hace zoom de camara, destaca el elemento en naranja y muestra sus atributos directos y PropertySets.
 
 La comunicacion QGIS → visor es unidireccional via HTTP polling.
-La seleccion de elemento IFC → QGIS (HU-03) esta pendiente de implementacion.
+
+**Transferencia BIM→GIS (Fase C):** cada propiedad del panel muestra un boton `→`. Al pulsarlo,
+el JS hace `POST /transfer` al servidor HTTP local. Un QTimer a 250 ms consume la cola en el hilo
+Qt principal y abre un dialogo donde el usuario elige el campo GIS de destino (existente o nuevo).
+El valor se escribe con `layer.changeAttributeValue`. Ver ADR-010 (Fase C).
 
 Este modulo forma parte del MVP.
 
@@ -709,6 +713,43 @@ Como responsable de inventario, quiero convertir mapeos frecuentes en perfiles s
 ### HU-E03 Aplicar un perfil sectorial a un activo
 
 Como tecnico GIS, quiero aplicar un perfil sectorial a un feature, para cargar propiedades IFC habituales de forma semiautomatica.
+
+---
+
+### HU-E04 Generar huella geografica de un IFC georreferenciado como capa temporal
+
+Como tecnico GIS, quiero que el complemento genere automaticamente el contorno 2D de un modelo IFC georreferenciado y lo presente como capa temporal en QGIS, para verificar su localizacion geografica real sin necesidad de importar geometria BIM de forma permanente.
+
+Criterios de aceptacion:
+
+* El sistema detecta si el IFC abierto contiene informacion de georreferenciacion completa mediante `IfcMapConversion` e `IfcCoordinateReferenceSystem` (IFC4+).
+* Si no existe `IfcMapConversion` o no se puede identificar un CRS, el sistema informa al usuario con un mensaje claro y no genera la capa.
+* Si solo existe `IfcSite.RefLatitude`/`RefLongitude` sin `IfcMapConversion`, el sistema advierte de la limitacion de precision y no genera la capa.
+* Si la georreferenciacion es completa, el sistema extrae la geometria 3D del modelo (priorizando elementos `IfcSlab` e `IfcWall` para reducir coste computacional).
+* El sistema aplica la transformacion de coordenadas de `IfcMapConversion` (offset, rotacion, escala) usando `ifcopenshell.util.geolocation`.
+* El sistema proyecta los vertices al plano 2D y calcula el convex hull como huella del edificio.
+* El sistema crea una capa de memoria en QGIS con un unico poligono de huella y el CRS identificado en el IFC.
+* La capa se denomina "IFC Footprint — <nombre_fichero>" y se anade automaticamente al proyecto QGIS activo.
+* La capa es temporal y no persiste entre sesiones de QGIS.
+* El sistema registra en developer logs el CRS detectado, el numero de vertices procesados y el resultado de la transformacion.
+* El sistema muestra un mensaje de usuario al completar la operacion o al informar de cualquier limitacion.
+* La huella se puede generar desde el panel del complemento cuando hay un IFC abierto en el visor.
+
+Restricciones tecnicas:
+
+* La lectura de georreferenciacion se implementa en `adapters/ifc/`.
+* La creacion de la capa temporal se implementa en `adapters/qgis/`.
+* No se importa geometria IFC como capa GIS permanente.
+* Se usa `ifcopenshell.util.geolocation` para la transformacion de coordenadas.
+* Se usa `shapely` para el calculo del convex hull (disponible en el entorno QGIS).
+* No se importa `shapely` ni `IfcOpenShell` desde codigo del nucleo (`core/`).
+* La operacion no bloquea la interfaz de QGIS; si el modelo es grande, debe ejecutarse con feedback de progreso.
+
+Condicion de activacion:
+
+* Requiere que el IFC este abierto en el visor embebido (HU-02 completada).
+* Se activa solo cuando el IFC tiene georreferenciacion completa detectable.
+* Esta historia es evolutiva y no forma parte del MVP. Se implementa tras validar el flujo manual de propiedades (HU-05 a HU-08).
 
 ---
 
