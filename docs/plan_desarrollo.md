@@ -1266,7 +1266,7 @@ sin necesidad de replicar el modelo BIM dentro del SIG.
 | HU-05 | Seleccionar propiedades para cargar en GIS | Parcial | Transferencia propiedad a propiedad con boton `->`. No existe seleccion multiple de propiedades en un solo paso. |
 | HU-06 | Mapear propiedades IFC a campos GIS | Completa | Dialogo BIM->GIS con campo existente o campo nuevo (Fase C: POST /transfer + QDialog + `changeAttributeValue`). |
 | HU-07 | Crear campos GIS controladamente | Completa | El dialogo de transferencia solicita confirmacion antes de crear el campo. |
-| HU-08 | Escribir valores IFC en atributos GIS | Parcial | Escritura del valor en el campo seleccionado funcional. Los campos `ifc_status`, `ifc_updated_at` e `ifc_error` no se actualizan automaticamente tras la transferencia. |
+| HU-08 | Escribir valores IFC en atributos GIS | Completa | Escritura del valor funcional. `ifc_status`, `ifc_updated_at` e `ifc_error` se actualizan automaticamente si existen en la capa; se omiten sin error si no existen. |
 | HU-09 | Usar el complemento en ingles y espanol | Parcial | Todos los textos usan `tr()`. Archivos `.ts` en ingles y espanol presentes. Archivos `.qm` compilados ausentes — las traducciones no estan activas en QGIS. |
 | HU-10 | Instalar y validar el complemento | Completa | Estructura de repositorio correcta, `metadata.txt`, scripts de empaquetado presentes. |
 | HU-11 | Consultar el estado de los flujos | Completa | Log de usuario en dock (QTextEdit). Developer logs via `PluginLogger`. Sin `print()` en el plugin distribuible. |
@@ -1326,7 +1326,7 @@ Sin tests de integracion ni tests con entorno QGIS real aun.
 ## 16.6 Pendientes prioritarios para cerrar el MVP
 
 1. **Compilar archivos .qm** — ejecutar `scripts/compile_translations.ps1` y verificar carga correcta en QGIS para activar traducciones EN/ES (HU-09).
-2. **Campos ifc_status / ifc_updated_at** — actualizar automaticamente esos campos en la capa GIS tras cada transferencia exitosa (HU-08).
+2. ~~**Campos ifc_status / ifc_updated_at**~~ — Completado. `build_status_updates` en `core/mapping.py` + `_apply_status_updates` en `plugin.py` (HU-08).
 3. **Quantity Sets en el visor** — verificar que el visor web muestra Quantity Sets y que el boton `->` funciona para ellos (HU-04).
 4. **Tests de integracion** — al menos un test de integracion con fixture IFC real para la extraccion de propiedades y la huella geografica (Fase 3).
 5. **Documentacion de usuario** — `docs/manual_usuario.md` y `docs/instalacion.md` no existen aun (Fase 3).

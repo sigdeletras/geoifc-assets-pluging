@@ -424,7 +424,7 @@ function readPropertySets(api: IfcAPI, modelId: number, expressId: number): PSet
           if (propVal === null) {
             for (const qKey of [
               "LengthValue", "AreaValue", "VolumeValue",
-              "CountValue", "WeightValue", "TimeValue",
+              "CountValue", "WeightValue", "TimeValue", "NumberValue",
             ]) {
               const qv = extractAttrValue(prop[qKey]);
               if (qv !== null) { propVal = qv; break; }

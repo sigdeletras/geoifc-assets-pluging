@@ -76,3 +76,30 @@ def build_attribute_update_plan(
         missing_field_names=tuple(missing_field_names),
         field_names_to_create=tuple(field_names_to_create),
     )
+
+
+def build_status_updates(
+    existing_field_names: Iterable[str],
+    *,
+    success: bool,
+    timestamp: str,
+    error_message: str = "",
+) -> tuple[AttributeUpdate, ...]:
+    """Return attribute updates for IFC bookkeeping fields present in the layer.
+
+    Only generates updates for ifc_status, ifc_updated_at and ifc_error when
+    those fields already exist in existing_field_names.  Missing status fields
+    are silently skipped so layers without them are unaffected.
+
+    On success: ifc_status="transferred", ifc_updated_at=timestamp, ifc_error=""
+    On failure: ifc_status="error", ifc_error=error_message (ifc_updated_at unchanged)
+    """
+    existing = set(existing_field_names)
+    updates: list[AttributeUpdate] = []
+    if "ifc_status" in existing:
+        updates.append(AttributeUpdate("ifc_status", "transferred" if success else "error"))
+    if success and "ifc_updated_at" in existing:
+        updates.append(AttributeUpdate("ifc_updated_at", timestamp))
+    if "ifc_error" in existing:
+        updates.append(AttributeUpdate("ifc_error", "" if success else error_message))
+    return tuple(updates)

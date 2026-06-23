@@ -421,6 +421,32 @@ class GeoIfcAssetsPlugin:
             used_fallback=footprint.used_fallback,
         )
 
+    def _apply_status_updates(
+        self,
+        layer: Any,
+        feature_id: int,
+        *,
+        success: bool,
+        error_message: str = "",
+    ) -> None:
+        """Write ifc_status, ifc_updated_at and ifc_error to the layer if those fields exist.
+
+        Must be called within an already-open editing session.
+        """
+        from datetime import datetime, timezone
+
+        from geoifcassets.core.mapping import build_status_updates
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        field_names = [f.name() for f in layer.fields()]
+        updates = build_status_updates(
+            field_names, success=success, timestamp=timestamp, error_message=error_message
+        )
+        for update in updates:
+            idx = layer.fields().indexOf(update.field_name)
+            if idx >= 0:
+                layer.changeAttributeValue(feature_id, idx, update.value)
+
     def _show_transfer_dialog(self, data: dict) -> None:
         """Open a dialog that maps one BIM property value onto a GIS layer field."""
         from qgis.PyQt.QtWidgets import (
@@ -515,6 +541,7 @@ class GeoIfcAssetsPlugin:
         layer.startEditing()
         ok = layer.changeAttributeValue(feature_id, field_index, value)
         if ok:
+            self._apply_status_updates(layer, feature_id, success=True)
             layer.commitChanges()
             msg = tr(
                 "GeoIfcAssets",
@@ -533,11 +560,15 @@ class GeoIfcAssetsPlugin:
             )
         else:
             layer.rollBack()
-            self._messages.warning(
-                tr("GeoIfcAssets", "Could not write value to field «{field}».").format(
-                    field=field_name
+            error_msg = tr(
+                "GeoIfcAssets", "Could not write value to field «{field}»."
+            ).format(field=field_name)
+            if layer.startEditing():
+                self._apply_status_updates(
+                    layer, feature_id, success=False, error_message=error_msg
                 )
-            )
+                layer.commitChanges()
+            self._messages.warning(error_msg)
 
     def _message_for_read_result(self, result: FeatureIfcReferenceReadResult) -> str:
         if result.status is FeatureReadStatus.OK and result.reference is not None:
