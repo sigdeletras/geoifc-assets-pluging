@@ -135,7 +135,7 @@ class GeoIfcAssetsPlugin:
             features.append(
                 FeatureListItem(
                     feature_id=feature.id(),
-                    label=_feature_label(feature),
+                    label=_feature_label(feature, source),
                     ifc_source=source,
                 )
             )
@@ -583,7 +583,7 @@ def _feature_ifc_source(feature: Any, fields: list[str]) -> str:
     return ""
 
 
-def _feature_label(feature: Any) -> str:
+def _feature_label(feature: Any, ifc_source: str = "") -> str:
     for field_name in ("name", "nombre", "Name", "Nombre"):
         try:
             value = str(feature[field_name] or "").strip()
@@ -591,6 +591,8 @@ def _feature_label(feature: Any) -> str:
             continue
         if value:
             return value
+    if ifc_source:
+        return Path(ifc_source).name
     return tr("GeoIfcAssets", "Feature {feature_id}").format(
         feature_id=feature.id()
     )
