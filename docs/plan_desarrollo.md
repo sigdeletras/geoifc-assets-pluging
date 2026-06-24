@@ -1259,14 +1259,14 @@ sin necesidad de replicar el modelo BIM dentro del SIG.
 
 ---
 
-# 16. Estado de implementacion (2026-06-24, actualizado tras commits 585b451 / 9601bfe)
+# 16. Estado de implementacion (2026-06-24, actualizado tras sesion feature/properties)
 
 ## 16.1 Resumen por fase
 
 | Fase | Descripcion | Estado |
 |------|-------------|--------|
 | Fase 1 | Base del complemento | Completa |
-| Fase 2 | MVP visor IFC + carga manual | ~90 % (pendiente: compilar .qm, Quantity Sets en visor JS) |
+| Fase 2 | MVP visor IFC + carga manual | ~93 % (pendiente: compilar .qm, verificar Quantity Sets en visor JS) |
 | Fase 3 | Calidad y empaquetado | ~40 % (tests unitarios presentes; faltan integracion, QGIS y documentacion) |
 | Fase 4 | Perfiles sectoriales | No iniciada |
 
@@ -1310,7 +1310,7 @@ sin necesidad de replicar el modelo BIM dentro del SIG.
 | Dock principal | `adapters/qgis/dock.py` | Tabs GeoIFC y Properties. Tab GeoIFC: Browse IFC file, selector de capa y feature, estado del visor IFC, barra de planta/huella, botones New temp layer / Add to existing layer. Tab Properties: metricas de modelo y log de usuario. La antigua pestaña IFC Viewer fue eliminada; sus controles se integraron en GeoIFC. |
 | Visor IFC | `adapters/qgis/viewer.py` | `IfcViewerDock`: QProcess + HTTP server local + polling `/current.json` + cola de transferencias. SwiftShader via `_ensure_swiftshader_flag`. Subproceso lazy: se lanza en el primer `open_reference()`, no en `__init__`. |
 | Subproceso visor | `webviewer_app.py` | Proceso independiente con `QWebEngineView`. Carga la SPA web-ifc + Three.js. Sirve los ficheros de la SPA e intercambia mensajes con QGIS via HTTP local. |
-| SPA web-ifc | `webviewer/` | HTML + bundle Vite (JS + CSS + web-ifc WASM). Renderizado 3D, arbol de elementos (plano y espacial), ray-casting, selector de plantas, boton de transferencia propiedad. Panel redimensionable por arrastre con persistencia `localStorage`. Boton colapsar arbol. Boton Export con menu desplegable: arbol espacial (JSON), categorias (JSON), propiedades del elemento seleccionado (JSON y CSV). Grupos de propiedades colapsables (Attributes, Pset_*, Qto_*) con persistencia del estado por grupo en `localStorage`. |
+| SPA web-ifc | `webviewer/` | HTML + bundle Vite (JS + CSS + web-ifc WASM). Renderizado 3D, arbol de elementos (plano y espacial), ray-casting, selector de plantas, boton de transferencia propiedad. Panel redimensionable por arrastre con persistencia `localStorage`. Boton colapsar arbol. Boton Export con menu desplegable: arbol espacial (JSON), categorias (JSON), propiedades del elemento seleccionado (JSON y CSV). Grupos de propiedades colapsables (Attributes, Pset_*, Qto_*) con persistencia del estado por grupo en `localStorage`. Buscador en tiempo real sobre el arbol de elementos con boton de borrar filtro. Buscador en tiempo real sobre el panel de propiedades (filtra por nombre y valor) con boton de borrar filtro; expande automaticamente grupos colapsados con coincidencias. Valores decimales redondeados a 2 cifras decimales en todos los campos numericos (atributos directos y PropertySets). Etiqueta de arbol con fallback a `Categoria #expressId` cuando el elemento carece de nombre en el IFC. Herramientas de medicion: longitud (2 puntos) y area (poligono, click derecho para cerrar); geometria Three.js temporal sobre el modelo, etiquetas CSS proyectadas en pantalla, se borran al cambiar de elemento. Seccion transversal: boton ✂ Section activa un plano de corte global (`THREE.Plane` + `renderer.clippingPlanes`); panel de controles en la parte inferior del visor con selector de eje (X/Y/Z), slider de posicion 0-100 % del rango del modelo, boton de inversion de lado y boton de cierre; coexiste con las herramientas de medicion. Vistas ortonormales: barra de preajustes de vista (Front/Back/Left/Right/Top/ISO) con animacion de camara suave (lerp); boton Ortho alterna entre proyeccion perspectiva y ortografica (`THREE.OrthographicCamera` sincronizada con la camara perspectiva en cada frame, frustum calculado automaticamente segun distancia al target de OrbitControls); el raycasting de seleccion y medicion usa la camara de renderizado activa para precision en modo ortografico. |
 | Extractor de huella | `adapters/ifc/footprint_extractor.py` | Detecta `IfcMapConversion`, extrae geometria de `IfcBuildingStorey`, aplica transformacion georreferenciada, devuelve WKT siempre como `MULTIPOLYGON` (fuerza envoltorio si `unary_union` produce un `Polygon` simple). |
 | Capa de huella | `adapters/qgis/footprint_layer.py` | Crea capa de memoria QGIS de tipo **MultiPolygon** con la huella y la anade al proyecto. Un feature por planta. Incluye campo `ifc_url` (ruta completa) para que la capa sea reconocida por el combo de capas del complemento. |
 | Lector IFC | `adapters/ifc/reader.py` | Lee esquema IFC (IFC2x3 / IFC4 / IFC4.3) sin IfcOpenShell completo (parsing ligero del header). |

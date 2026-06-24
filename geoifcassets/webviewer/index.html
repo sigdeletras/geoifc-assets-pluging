@@ -13,6 +13,32 @@
         <canvas id="viewer-canvas"></canvas>
         <div class="viewport-status" id="viewport-status">Waiting for IFC source</div>
         <button class="view-toggle-btn" id="btn-view-2d" hidden title="Switch to 2D top-down view">2D</button>
+        <div class="measure-toolbar" id="measure-toolbar" hidden>
+          <button class="measure-btn" id="btn-measure-length" title="Measure length — click 2 points">📏 Length</button>
+          <button class="measure-btn" id="btn-measure-area" title="Measure area — click points, right-click to close">⬜ Area</button>
+          <button class="measure-btn" id="btn-section" title="Cross-section clipping plane">✂ Section</button>
+          <button class="measure-btn measure-clear-btn" id="btn-measure-clear" title="Clear measurements and annotations">✕</button>
+        </div>
+        <div class="measure-labels" id="measure-labels"></div>
+        <div class="view-preset-bar" id="view-preset-bar" hidden>
+          <button class="view-preset-btn" data-view="front" title="Front elevation (+Z)">Front</button>
+          <button class="view-preset-btn" data-view="back"  title="Back elevation (−Z)">Back</button>
+          <button class="view-preset-btn" data-view="left"  title="Left elevation (−X)">Left</button>
+          <button class="view-preset-btn" data-view="right" title="Right elevation (+X)">Right</button>
+          <button class="view-preset-btn" data-view="top"   title="Top plan (+Y)">Top</button>
+          <button class="view-preset-btn" data-view="iso"   title="Isometric">ISO</button>
+          <div class="view-preset-sep"></div>
+          <button class="view-preset-btn" id="btn-ortho" title="Toggle orthographic / perspective projection">Ortho</button>
+        </div>
+        <div class="section-controls" id="section-controls" hidden>
+          <span class="section-label">Axis:</span>
+          <button class="section-axis-btn active" data-axis="y">Y</button>
+          <button class="section-axis-btn" data-axis="x">X</button>
+          <button class="section-axis-btn" data-axis="z">Z</button>
+          <input type="range" class="section-slider" id="section-slider" min="0" max="100" value="50">
+          <button class="section-flip-btn" id="section-flip" title="Flip side">↕</button>
+          <button class="section-off-btn" id="section-off" title="Disable section">✕</button>
+        </div>
       </section>
       <div class="resizer" id="panel-resizer" title="Drag to resize panel"></div>
       <aside class="viewer-panel" aria-label="Element browser">

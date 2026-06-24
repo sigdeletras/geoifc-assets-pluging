@@ -598,6 +598,180 @@ strong {
   color: #ffffff;
 }
 
+/* ── Measurement toolbar ───────────────────────────────────────────────────── */
+
+.measure-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  gap: 4px;
+  z-index: 10;
+}
+
+.measure-btn {
+  padding: 4px 9px;
+  border: 1px solid #cfd7df;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  color: #2e4053;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.measure-btn:hover {
+  background: #2471a3;
+  color: #ffffff;
+  border-color: #2471a3;
+}
+
+.measure-btn.active {
+  background: #e67e22;
+  color: #ffffff;
+  border-color: #e67e22;
+}
+
+.measure-clear-btn {
+  font-size: 11px;
+  padding: 4px 7px;
+}
+
+.measure-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 15;
+}
+
+.measure-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.75);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  font-family: Arial, sans-serif;
+}
+
+/* ── View preset bar ───────────────────────────────────────────────────────── */
+
+.view-preset-bar {
+  position: absolute;
+  top: 52px;
+  left: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-width: 260px;
+  z-index: 10;
+}
+
+.view-preset-btn {
+  padding: 3px 8px;
+  border: 1px solid rgba(36, 113, 163, 0.45);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.88);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #1a5276;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+}
+
+.view-preset-btn:hover {
+  background: rgba(36, 113, 163, 0.15);
+  border-color: #2471a3;
+}
+
+.view-preset-btn.active {
+  background: #2471a3;
+  color: #ffffff;
+  border-color: #2471a3;
+}
+
+.view-preset-sep {
+  width: 1px;
+  height: 20px;
+  background: #cfd7df;
+  align-self: center;
+  margin: 0 1px;
+}
+
+/* ── Section controls ──────────────────────────────────────────────────────── */
+
+.section-controls {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.93);
+  border: 1px solid #cfd7df;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  z-index: 10;
+}
+
+.section-label {
+  color: #5d6d7e;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.section-axis-btn {
+  padding: 2px 8px;
+  border: 1px solid #cfd7df;
+  border-radius: 3px;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #2e4053;
+}
+
+.section-axis-btn:hover,
+.section-axis-btn.active {
+  background: #2471a3;
+  color: #ffffff;
+  border-color: #2471a3;
+}
+
+.section-slider {
+  width: 110px;
+  cursor: pointer;
+  accent-color: #2471a3;
+}
+
+.section-flip-btn,
+.section-off-btn {
+  padding: 2px 7px;
+  border: 1px solid #cfd7df;
+  border-radius: 3px;
+  background: transparent;
+  font-size: 12px;
+  cursor: pointer;
+  color: #2e4053;
+}
+
+.section-flip-btn:hover {
+  background: #edf3fb;
+  border-color: #2471a3;
+}
+
+.section-off-btn:hover {
+  background: #fdecea;
+  color: #c0392b;
+  border-color: #e74c3c;
+}
+
 /* ── 2D / 3D view toggle ───────────────────────────────────────────────────── */
 
 .view-toggle-btn {
