@@ -61,7 +61,7 @@ def add_footprint_layer(footprint: StoreyFootprint, ifc_path: str) -> str:
 
     ifc_filename = Path(ifc_path).name
     layer_name = f"IFC Floor — {footprint.storey_name} — {ifc_filename}"
-    uri = f"Polygon?crs={target_crs.authid()}"
+    uri = f"MultiPolygon?crs={target_crs.authid()}"
 
     layer = QgsVectorLayer(uri, layer_name, "memory")
     if not layer.isValid():

@@ -769,8 +769,9 @@ Criterios de aceptacion:
 
 **Capa QGIS:**
 
-* El sistema crea una capa de memoria en QGIS de tipo Polygon con el CRS detectado.
-* La capa contiene un unico feature con la geometria de la planta seleccionada y los atributos: nombre del storey, cota de referencia, nombre del fichero IFC y CRS identificado.
+* El sistema crea una capa de memoria en QGIS de tipo **MultiPolygon** con el CRS detectado.
+* La capa contiene un unico feature por planta con la geometria unificada en un MultiPolygon (incluso si la union produce un unico recinto) y los atributos: nombre del storey, nombre del fichero IFC y CRS identificado.
+* Usar MultiPolygon garantiza que haya exactamente un registro por planta aunque la union produzca recintos disjuntos (p.ej. edificios separados en la misma planta).
 * La capa se denomina "IFC Floor — <nombre_storey> — <nombre_fichero>" y se anade automaticamente al proyecto QGIS activo.
 * La capa es temporal y no persiste entre sesiones de QGIS.
 * Se puede generar una nueva capa para una planta diferente sin eliminar las anteriores.
@@ -1297,7 +1298,7 @@ sin necesidad de replicar el modelo BIM dentro del SIG.
 | HU-E01 | Guardar un mapeo reutilizable | No iniciada | |
 | HU-E02 | Crear un perfil sectorial desde mapeos validados | No iniciada | |
 | HU-E03 | Aplicar un perfil sectorial a un activo | No iniciada | |
-| HU-E04 | Generar huella geografica de planta IFC | Completa | Implementada antes del MVP. `footprint_extractor.py` y `footprint_layer.py`. Deteccion de `IfcMapConversion`, transformacion de coordenadas via `ifcopenshell.util.geolocation`, capa temporal en QGIS con reproyeccion al CRS del proyecto. Dialogo manual de CRS si el IFC carece de `IfcMapConversion`. |
+| HU-E04 | Generar huella geografica de planta IFC | Completa | Implementada antes del MVP. `footprint_extractor.py` y `footprint_layer.py`. Deteccion de `IfcMapConversion`, transformacion de coordenadas via `ifcopenshell.util.geolocation`, capa temporal en QGIS de tipo **MultiPolygon** con reproyeccion al CRS del proyecto. Un unico feature por planta; la union de recintos disjuntos se preserva como MultiPolygon. Dialogo manual de CRS si el IFC carece de `IfcMapConversion`. |
 
 ---
 
@@ -1310,8 +1311,8 @@ sin necesidad de replicar el modelo BIM dentro del SIG.
 | Visor IFC | `adapters/qgis/viewer.py` | `IfcViewerDock`: QProcess + HTTP server local + polling `/current.json` + cola de transferencias. SwiftShader via `_ensure_swiftshader_flag`. Subproceso lazy: se lanza en el primer `open_reference()`, no en `__init__`. |
 | Subproceso visor | `webviewer_app.py` | Proceso independiente con `QWebEngineView`. Carga la SPA web-ifc + Three.js. |
 | SPA web-ifc | `webviewer/` | HTML + bundle Vite (JS + CSS + web-ifc WASM). Renderizado 3D, arbol de elementos, ray-casting, selector de plantas, boton de transferencia propiedad. |
-| Extractor de huella | `adapters/ifc/footprint_extractor.py` | Detecta `IfcMapConversion`, extrae geometria de `IfcBuildingStorey`, aplica transformacion georreferenciada, devuelve WKT. |
-| Capa de huella | `adapters/qgis/footprint_layer.py` | Crea capa de memoria QGIS con la huella y la anade al proyecto. Incluye campo `ifc_url` (ruta completa) para que la capa sea reconocida por el combo de capas del complemento. |
+| Extractor de huella | `adapters/ifc/footprint_extractor.py` | Detecta `IfcMapConversion`, extrae geometria de `IfcBuildingStorey`, aplica transformacion georreferenciada, devuelve WKT siempre como `MULTIPOLYGON` (fuerza envoltorio si `unary_union` produce un `Polygon` simple). |
+| Capa de huella | `adapters/qgis/footprint_layer.py` | Crea capa de memoria QGIS de tipo **MultiPolygon** con la huella y la anade al proyecto. Un feature por planta. Incluye campo `ifc_url` (ruta completa) para que la capa sea reconocida por el combo de capas del complemento. |
 | Lector IFC | `adapters/ifc/reader.py` | Lee esquema IFC (IFC2x3 / IFC4 / IFC4.3) sin IfcOpenShell completo (parsing ligero del header). |
 | Lector de features | `adapters/qgis/feature_reader.py` | Lee `ifc_path` / `ifc_url` del feature seleccionado y resuelve conflictos. |
 | Escritor de features | `adapters/qgis/feature_writer.py` | Escribe atributos en la capa GIS. |

@@ -175,7 +175,7 @@ def extract_storey_footprint(
     import ifcopenshell.geom  # noqa: PLC0415
 
     try:
-        from shapely.geometry import Polygon  # noqa: PLC0415
+        from shapely.geometry import MultiPolygon, Polygon  # noqa: PLC0415
         from shapely.ops import unary_union  # noqa: PLC0415
     except ImportError as exc:
         raise FootprintExtractError(f"shapely unavailable: {exc}") from exc
@@ -238,6 +238,11 @@ def extract_storey_footprint(
         raise FootprintExtractError(
             f"Merged geometry is empty for storey '{storey_name}'."
         )
+
+    # Always return MultiPolygon so the GIS layer type is consistent regardless
+    # of whether the union produced one or several disjoint polygons.
+    if merged.geom_type == "Polygon":
+        merged = MultiPolygon([merged])
 
     crs_auth = f"EPSG:{georef.epsg}" if georef.epsg else georef.crs_name
 
