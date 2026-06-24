@@ -1259,14 +1259,14 @@ sin necesidad de replicar el modelo BIM dentro del SIG.
 
 ---
 
-# 16. Estado de implementacion (2026-06-24)
+# 16. Estado de implementacion (2026-06-24, actualizado tras commits 585b451 / 9601bfe)
 
 ## 16.1 Resumen por fase
 
 | Fase | Descripcion | Estado |
 |------|-------------|--------|
 | Fase 1 | Base del complemento | Completa |
-| Fase 2 | MVP visor IFC + carga manual | ~85 % (pendientes menores) |
+| Fase 2 | MVP visor IFC + carga manual | ~90 % (pendiente: compilar .qm, Quantity Sets en visor JS) |
 | Fase 3 | Calidad y empaquetado | ~40 % (tests unitarios presentes; faltan integracion, QGIS y documentacion) |
 | Fase 4 | Perfiles sectoriales | No iniciada |
 
@@ -1309,8 +1309,8 @@ sin necesidad de replicar el modelo BIM dentro del SIG.
 | Plugin principal | `adapters/qgis/plugin.py` | Punto central: inicializacion, dock, visor, transferencia BIM->GIS, huella IFC. Flujo sin capa GIS previa: `_browse_ifc_file`, `_show_create_temp_layer_dialog`, `_show_add_to_layer_dialog`. |
 | Dock principal | `adapters/qgis/dock.py` | Tabs GeoIFC y Properties. Tab GeoIFC: Browse IFC file, selector de capa y feature, estado del visor IFC, barra de planta/huella, botones New temp layer / Add to existing layer. Tab Properties: metricas de modelo y log de usuario. La antigua pestaña IFC Viewer fue eliminada; sus controles se integraron en GeoIFC. |
 | Visor IFC | `adapters/qgis/viewer.py` | `IfcViewerDock`: QProcess + HTTP server local + polling `/current.json` + cola de transferencias. SwiftShader via `_ensure_swiftshader_flag`. Subproceso lazy: se lanza en el primer `open_reference()`, no en `__init__`. |
-| Subproceso visor | `webviewer_app.py` | Proceso independiente con `QWebEngineView`. Carga la SPA web-ifc + Three.js. |
-| SPA web-ifc | `webviewer/` | HTML + bundle Vite (JS + CSS + web-ifc WASM). Renderizado 3D, arbol de elementos, ray-casting, selector de plantas, boton de transferencia propiedad. |
+| Subproceso visor | `webviewer_app.py` | Proceso independiente con `QWebEngineView`. Carga la SPA web-ifc + Three.js. Sirve los ficheros de la SPA e intercambia mensajes con QGIS via HTTP local. |
+| SPA web-ifc | `webviewer/` | HTML + bundle Vite (JS + CSS + web-ifc WASM). Renderizado 3D, arbol de elementos (plano y espacial), ray-casting, selector de plantas, boton de transferencia propiedad. Panel redimensionable por arrastre con persistencia `localStorage`. Boton colapsar arbol. Boton Export con menu desplegable: arbol espacial (JSON), categorias (JSON), propiedades del elemento seleccionado (JSON y CSV). |
 | Extractor de huella | `adapters/ifc/footprint_extractor.py` | Detecta `IfcMapConversion`, extrae geometria de `IfcBuildingStorey`, aplica transformacion georreferenciada, devuelve WKT siempre como `MULTIPOLYGON` (fuerza envoltorio si `unary_union` produce un `Polygon` simple). |
 | Capa de huella | `adapters/qgis/footprint_layer.py` | Crea capa de memoria QGIS de tipo **MultiPolygon** con la huella y la anade al proyecto. Un feature por planta. Incluye campo `ifc_url` (ruta completa) para que la capa sea reconocida por el combo de capas del complemento. |
 | Lector IFC | `adapters/ifc/reader.py` | Lee esquema IFC (IFC2x3 / IFC4 / IFC4.3) sin IfcOpenShell completo (parsing ligero del header). |
