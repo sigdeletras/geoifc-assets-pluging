@@ -139,7 +139,7 @@ def _extract_building_info(ifc: object, metrics: list[ModelMetric]) -> None:
 
 
 def _extract_crs_info(ifc: object, metrics: list[ModelMetric]) -> None:
-    crs_entities = ifc.by_type("IfcCoordinateReferenceSystem")  # type: ignore[attr-defined]
+    crs_entities = _by_type_safe(ifc, "IfcCoordinateReferenceSystem")
     if not crs_entities:
         return
     crs = crs_entities[0]

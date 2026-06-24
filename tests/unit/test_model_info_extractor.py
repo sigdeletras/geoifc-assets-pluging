@@ -144,6 +144,33 @@ def test_extract_crs_with_epsg(fake_ifcopenshell) -> None:
     assert by_field["ifc_crs"] == "EPSG:25830"
 
 
+def test_extract_model_info_on_ifc2x3_does_not_crash(fake_ifcopenshell) -> None:
+    """IFC2X3 lacks IfcCoordinateReferenceSystem; _by_type_safe must absorb RuntimeError."""
+    from geoifcassets.adapters.ifc.model_info_extractor import extract_model_info
+
+    class IFC2X3Model(FakeIfcModel):
+        _IFC4_ONLY = {"IfcCoordinateReferenceSystem", "IfcMapConversion"}
+
+        def by_type(self, type_name: str) -> list:
+            if type_name in self._IFC4_ONLY:
+                raise RuntimeError(
+                    f"Entity with name '{type_name}' not found in schema 'IFC2X3'"
+                )
+            return super().by_type(type_name)
+
+    model = IFC2X3Model(
+        {"IfcProject": [FakeEntity("IfcProject", Name="Legacy", Description=None, Phase=None)]},
+        schema="IFC2X3",
+    )
+    fake_ifcopenshell(model)
+
+    metrics = extract_model_info("test.ifc")
+
+    by_field = {m.suggested_field: m.value for m in metrics}
+    assert by_field["ifc_project_name"] == "Legacy"
+    assert "ifc_crs" not in by_field
+
+
 def test_returns_empty_list_when_ifc_cannot_be_opened(fake_ifcopenshell, monkeypatch) -> None:
     import sys
     from unittest.mock import MagicMock

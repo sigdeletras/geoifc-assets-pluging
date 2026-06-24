@@ -53,7 +53,10 @@ def diagnose_georef(ifc_path: str) -> str:
 
     lines: list[str] = []
 
-    conversions = ifc.by_type("IfcMapConversion")
+    try:
+        conversions = ifc.by_type("IfcMapConversion")
+    except RuntimeError:
+        conversions = []
     if conversions:
         conv = conversions[0]
         e = getattr(conv, "Eastings", None)
@@ -62,7 +65,10 @@ def diagnose_georef(ifc_path: str) -> str:
     else:
         lines.append("IfcMapConversion: NOT FOUND")
 
-    crss = ifc.by_type("IfcCoordinateReferenceSystem")
+    try:
+        crss = ifc.by_type("IfcCoordinateReferenceSystem")
+    except RuntimeError:
+        crss = []
     if crss:
         crs_name = getattr(crss[0], "Name", None) or ""
         entity_type = crss[0].is_a()
