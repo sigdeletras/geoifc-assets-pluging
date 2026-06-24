@@ -45,3 +45,26 @@ class IfcModelSummary:
 
     source: str
     schema: str | None
+
+
+class MetricSource(StrEnum):
+    """How a ModelMetric value was obtained."""
+
+    QTO = "qto"           # read from a formal QuantitySet (Qto_*)
+    CALCULATED = "calculated"  # derived because formal QtoSet was absent
+
+
+@dataclass(frozen=True)
+class ModelMetric:
+    """A single extracted IFC metric ready to be mapped to a GIS field.
+
+    ``suggested_field`` is the recommended GIS field name.  It uses the
+    ``ifc_`` prefix for formal QtoSet values and ``ifc_calc_`` for computed
+    fallbacks so the user can distinguish origins at a glance.
+    """
+
+    label: str            # human-readable display name
+    suggested_field: str  # suggested GIS field name (ifc_* or ifc_calc_*)
+    value: object         # scalar: str | int | float | None
+    unit: str             # "", "m²", "m", "count", etc.
+    source: MetricSource
