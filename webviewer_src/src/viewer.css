@@ -15,7 +15,7 @@ body {
 
 .viewer-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 270px;
+  grid-template-columns: minmax(0, 1fr) 4px 270px;
   height: 100%;
   min-height: 320px;
 }
@@ -56,6 +56,20 @@ body {
   overflow: hidden;
   background: #ffffff;
   border-left: 1px solid #e0e6eb;
+}
+
+/* ── Panel resizer handle ──────────────────────────────────────────────────── */
+
+.resizer {
+  cursor: col-resize;
+  background: #e0e6eb;
+  transition: background 0.15s;
+  z-index: 5;
+}
+
+.resizer:hover,
+.resizer.dragging {
+  background: #2471a3;
 }
 
 /* Info bar: source name */
@@ -134,6 +148,13 @@ strong {
 .tree-mode-btn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.tree-collapse-btn {
+  flex: none;
+  padding: 4px 9px;
+  font-size: 14px;
+  line-height: 1;
 }
 
 /* ── Element tree ──────────────────────────────────────────────────────────── */
@@ -344,11 +365,29 @@ strong {
 
 .prop-key {
   flex-shrink: 0;
-  width: 110px;
+  width: var(--prop-key-width, 110px);
   color: #5d6d7e;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.prop-col-resizer {
+  flex-shrink: 0;
+  width: 5px;
+  cursor: col-resize;
+  background: transparent;
+  align-self: stretch;
+  transition: background 0.1s;
+}
+
+.prop-row:hover .prop-col-resizer {
+  background: #dce8f5;
+}
+
+.prop-col-resizer:hover,
+.prop-col-resizer.dragging {
+  background: #2471a3;
 }
 
 .prop-val {
@@ -479,6 +518,10 @@ strong {
   .viewport {
     border-right: 0;
     border-bottom: 1px solid #cfd7df;
+  }
+
+  .resizer {
+    display: none;
   }
 
   .viewer-panel {

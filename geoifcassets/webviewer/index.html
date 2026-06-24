@@ -14,6 +14,7 @@
         <div class="viewport-status" id="viewport-status">Waiting for IFC source</div>
         <button class="view-toggle-btn" id="btn-view-2d" hidden title="Switch to 2D top-down view">2D</button>
       </section>
+      <div class="resizer" id="panel-resizer" title="Drag to resize panel"></div>
       <aside class="viewer-panel" aria-label="Element browser">
         <div class="panel-info">
           <span class="label">Source</span>
@@ -23,6 +24,7 @@
         <div class="tree-mode-bar" id="tree-mode-bar" hidden>
           <button class="tree-mode-btn active" id="btn-mode-cat" title="Group by IFC category">Category</button>
           <button class="tree-mode-btn" id="btn-mode-spatial" title="Browse spatial structure (Project → Site → Building → Storey → Elements)" disabled>Spatial</button>
+          <button class="tree-mode-btn tree-collapse-btn" id="btn-collapse-tree" title="Collapse all">⊟</button>
         </div>
         <div class="storey-bar" id="storey-bar" hidden aria-label="Floor / storey filter"></div>
         <div id="element-tree" class="panel-tree" role="tree" aria-label="IFC elements">
@@ -33,6 +35,6 @@
           <span id="source-status">Idle</span>
         </div>
       </aside>
-    </main>
+    </main>
   </body>
 </html>

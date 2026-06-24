@@ -137,6 +137,7 @@ const elementPropsEl = document.getElementById("element-props") as HTMLElement;
 const treeModeBar = document.getElementById("tree-mode-bar") as HTMLElement;
 const btnModeCat = document.getElementById("btn-mode-cat") as HTMLButtonElement;
 const btnModeSpatial = document.getElementById("btn-mode-spatial") as HTMLButtonElement;
+const btnCollapseTree = document.getElementById("btn-collapse-tree") as HTMLButtonElement;
 const storeyBarEl = document.getElementById("storey-bar") as HTMLElement;
 const btn2DView = document.getElementById("btn-view-2d") as HTMLButtonElement;
 
@@ -155,6 +156,9 @@ let controls: OrbitControls | null = null;
 let elementsByCategory: Map<string, IFCElement[]> | null = null;
 const propSetIndex = new Map<number, number[]>();
 let selectedExpressId: number | null = null;
+
+// Last rendered element props (for export)
+let _lastProps: { expressId: number; name: string; category: string; direct: PropEntry[]; psets: PSet[] } | null = null;
 const savedMaterials = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
 
 // Spatial tree state (Phase B)
@@ -824,6 +828,9 @@ function switchViewMode(mode: ViewMode): void {
 
 btnModeCat.addEventListener("click", () => switchViewMode("category"));
 btnModeSpatial.addEventListener("click", () => switchViewMode("spatial"));
+btnCollapseTree.addEventListener("click", () => {
+  elementTreeEl.querySelectorAll<HTMLDetailsElement>("details").forEach((d) => { d.open = false; });
+});
 
 function renderActiveTree(): void {
   if (viewMode === "spatial" && spatialRoot !== null) {
@@ -852,7 +859,7 @@ function renderCategoryTree(): void {
 
     const details = document.createElement("details");
     details.className = "tree-cat";
-    details.open = true;
+    details.open = false;
 
     const summary = document.createElement("summary");
     summary.innerHTML =
@@ -906,7 +913,7 @@ function appendSpatialNode(
 
   const details = document.createElement("details");
   details.className = `tree-cat snode-${node.typeCss}`;
-  details.open = node.typeCss !== "space"; // collapse spaces by default
+  details.open = false;
 
   const summary = document.createElement("summary");
   summary.innerHTML =
@@ -996,6 +1003,7 @@ function propRow(pset: string, key: string, value: string): string {
   return (
     `<div class="prop-row">` +
     `<span class="prop-key">${escHtml(key)}</span>` +
+    `<div class="prop-col-resizer"></div>` +
     `<span class="prop-val">${escHtml(value)}</span>` +
     `<button class="prop-transfer" ` +
     `data-pset="${escHtml(pset)}" data-key="${escHtml(key)}" data-val="${escHtml(value)}" ` +
@@ -1298,7 +1306,7 @@ async function pollCurrentIfc(): Promise<void> {
   try {
     const res = await fetch("/current.json");
     if (!res.ok) return;
-    const data = (await res.json()) as { version: number; ifc_url: string | null };
+    const data = (await res.json()) as { version: number; ifc_url: string | null; ifc_name: string | null };
     if (data.version !== _pollVersion) {
       _pollVersion = data.version;
       if (data.ifc_url) {
@@ -1311,7 +1319,7 @@ async function pollCurrentIfc(): Promise<void> {
         setStatus("IFC source updated — loading...");
         await window.GeoIfcViewer.openReference({
           modelUrl: data.ifc_url,
-          source: data.ifc_url,
+          source: data.ifc_name ?? data.ifc_url,
           kind: "ifc_url",
         });
       } else {
@@ -1328,3 +1336,99 @@ setTimeout(() => {
   void pollCurrentIfc();
   setInterval(() => void pollCurrentIfc(), 1500);
 }, 800);
+
+// ── Props key-column resize ───────────────────────────────────────────────────
+
+const PROPS_KEY_STORAGE = "geoifc-prop-key-width";
+const PROPS_KEY_MIN = 60;
+const PROPS_KEY_MAX = 300;
+const PROPS_KEY_DEFAULT = 110;
+
+{
+  const saved = parseInt(localStorage.getItem(PROPS_KEY_STORAGE) ?? "", 10);
+  const w = isNaN(saved) ? PROPS_KEY_DEFAULT : Math.max(PROPS_KEY_MIN, Math.min(PROPS_KEY_MAX, saved));
+  elementPropsEl.style.setProperty("--prop-key-width", `${w}px`);
+}
+
+let _propResizing = false;
+let _propStartX = 0;
+let _propStartWidth = 0;
+let _propResizerEl: HTMLElement | null = null;
+
+elementPropsEl.addEventListener("mousedown", (e: MouseEvent) => {
+  const target = e.target as HTMLElement;
+  if (!target.classList.contains("prop-col-resizer")) return;
+  _propResizing = true;
+  _propResizerEl = target;
+  _propStartX = e.clientX;
+  _propStartWidth = parseInt(elementPropsEl.style.getPropertyValue("--prop-key-width") || String(PROPS_KEY_DEFAULT), 10);
+  target.classList.add("dragging");
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+  e.preventDefault();
+});
+
+document.addEventListener("mousemove", (e: MouseEvent) => {
+  if (!_propResizing) return;
+  const dx = e.clientX - _propStartX;
+  const newWidth = Math.max(PROPS_KEY_MIN, Math.min(PROPS_KEY_MAX, _propStartWidth + dx));
+  elementPropsEl.style.setProperty("--prop-key-width", `${newWidth}px`);
+});
+
+document.addEventListener("mouseup", () => {
+  if (!_propResizing) return;
+  _propResizing = false;
+  _propResizerEl?.classList.remove("dragging");
+  _propResizerEl = null;
+  document.body.style.cursor = "";
+  document.body.style.userSelect = "";
+  const finalWidth = parseInt(elementPropsEl.style.getPropertyValue("--prop-key-width") || String(PROPS_KEY_DEFAULT), 10);
+  localStorage.setItem(PROPS_KEY_STORAGE, String(finalWidth));
+});
+
+// ── Panel resize ──────────────────────────────────────────────────────────────
+
+const _shell = document.querySelector<HTMLElement>(".viewer-shell");
+const _resizerEl = document.getElementById("panel-resizer");
+
+if (_shell && _resizerEl) {
+  const STORAGE_KEY = "geoifc-panel-width";
+  const MIN_WIDTH = 180;
+  const MAX_WIDTH = 700;
+  const DEFAULT_WIDTH = 270;
+
+  const savedWidth = parseInt(localStorage.getItem(STORAGE_KEY) ?? "", 10);
+  const initialWidth = isNaN(savedWidth) ? DEFAULT_WIDTH : Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, savedWidth));
+  _shell.style.gridTemplateColumns = `minmax(0, 1fr) 4px ${initialWidth}px`;
+
+  let _resizing = false;
+  let _startX = 0;
+  let _startWidth = 0;
+
+  _resizerEl.addEventListener("mousedown", (e: MouseEvent) => {
+    _resizing = true;
+    _startX = e.clientX;
+    _startWidth = parseInt(_shell.style.gridTemplateColumns.split(" ").pop() ?? String(DEFAULT_WIDTH), 10);
+    _resizerEl.classList.add("dragging");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", (e: MouseEvent) => {
+    if (!_resizing) return;
+    const dx = _startX - e.clientX;
+    const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, _startWidth + dx));
+    _shell.style.gridTemplateColumns = `minmax(0, 1fr) 4px ${newWidth}px`;
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (!_resizing) return;
+    _resizing = false;
+    _resizerEl.classList.remove("dragging");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    const finalWidth = parseInt(_shell.style.gridTemplateColumns.split(" ").pop() ?? String(DEFAULT_WIDTH), 10);
+    localStorage.setItem(STORAGE_KEY, String(finalWidth));
+  });
+}
