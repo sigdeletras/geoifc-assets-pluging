@@ -218,6 +218,56 @@ strong {
   line-height: 1.5;
 }
 
+/* ── Search bars (tree + props) ────────────────────────────────────────────── */
+
+.search-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-bottom: 1px solid #e0e6eb;
+  background: #f4f7fa;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 7px;
+  border: 1px solid #cfd7df;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #2e4053;
+  background: #ffffff;
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: #2471a3;
+  box-shadow: 0 0 0 2px rgba(36, 113, 163, 0.15);
+}
+
+.search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-clear {
+  flex-shrink: 0;
+  padding: 3px 6px;
+  border: 1px solid #cfd7df;
+  border-radius: 4px;
+  background: transparent;
+  color: #5d6d7e;
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.search-clear:hover {
+  background: #e8edf1;
+  color: #2e4053;
+}
+
 /* Category / spatial group (<details>) */
 .tree-cat {
   border-bottom: 1px solid #f0f3f5;
@@ -395,6 +445,31 @@ strong {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   background: #edf3fb;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pset-name:hover {
+  background: #d4e4f7;
+}
+
+.pset-chevron::before {
+  content: "▼";
+  font-size: 8px;
+  display: inline-block;
+  transition: transform 0.15s ease;
+  line-height: 1;
+}
+
+.pset-block.collapsed .pset-chevron::before {
+  transform: rotate(-90deg);
+}
+
+.pset-block.collapsed .pset-rows {
+  display: none;
 }
 
 .prop-row {

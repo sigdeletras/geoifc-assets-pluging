@@ -35,8 +35,16 @@
           <button class="export-item" id="export-props-csv">CSV</button>
         </div>
         <div class="storey-bar" id="storey-bar" hidden aria-label="Floor / storey filter"></div>
+        <div class="search-bar" id="tree-search-bar" hidden>
+          <input type="search" class="search-input" id="tree-search-input" placeholder="Filter elements…" aria-label="Filter elements" autocomplete="off">
+          <button class="search-clear" id="tree-search-clear" title="Clear filter" hidden>✕</button>
+        </div>
         <div id="element-tree" class="panel-tree" role="tree" aria-label="IFC elements">
           <p class="panel-hint">Load an IFC model to browse elements.</p>
+        </div>
+        <div class="search-bar" id="props-search-bar" hidden>
+          <input type="search" class="search-input" id="props-search-input" placeholder="Filter properties…" aria-label="Filter properties" autocomplete="off">
+          <button class="search-clear" id="props-search-clear" title="Clear filter" hidden>✕</button>
         </div>
         <div id="element-props" class="panel-props" hidden aria-label="Element properties"></div>
         <div class="panel-status">

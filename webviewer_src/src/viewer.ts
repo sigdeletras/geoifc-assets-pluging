@@ -142,6 +142,12 @@ const btnExport = document.getElementById("btn-export") as HTMLButtonElement;
 const exportMenu = document.getElementById("export-menu") as HTMLElement;
 const storeyBarEl = document.getElementById("storey-bar") as HTMLElement;
 const btn2DView = document.getElementById("btn-view-2d") as HTMLButtonElement;
+const treeSearchBarEl = document.getElementById("tree-search-bar") as HTMLElement;
+const treeSearchInputEl = document.getElementById("tree-search-input") as HTMLInputElement;
+const treeSearchClearEl = document.getElementById("tree-search-clear") as HTMLButtonElement;
+const propsSearchBarEl = document.getElementById("props-search-bar") as HTMLElement;
+const propsSearchInputEl = document.getElementById("props-search-input") as HTMLInputElement;
+const propsSearchClearEl = document.getElementById("props-search-clear") as HTMLButtonElement;
 
 // ── Viewer state ──────────────────────────────────────────────────────────────
 
@@ -342,7 +348,10 @@ canvas.addEventListener("click", (e) => {
 function extractAttrValue(val: unknown): string | null {
   if (val === null || val === undefined) return null;
   if (typeof val === "string") return val || null;
-  if (typeof val === "number") return String(val);
+  if (typeof val === "number") {
+    if (Number.isInteger(val)) return String(val);
+    return parseFloat(val.toFixed(2)).toString();
+  }
   if (typeof val === "boolean") return String(val);
   if (Array.isArray(val)) return null;
   if (typeof val === "object") {
@@ -352,6 +361,10 @@ function extractAttrValue(val: unknown): string | null {
       const v = obj["value"];
       if (v === null || v === undefined || v === "") return null;
       if (typeof v === "object") return null;
+      if (typeof v === "number") {
+        if (Number.isInteger(v)) return String(v);
+        return parseFloat(v.toFixed(2)).toString();
+      }
       return String(v);
     }
   }
@@ -646,6 +659,12 @@ function clearTreeUI(): void {
   treeModeBar.hidden = true;
   storeyBarEl.hidden = true;
   btn2DView.hidden = true;
+  treeSearchBarEl.hidden = true;
+  treeSearchInputEl.value = "";
+  treeSearchClearEl.hidden = true;
+  propsSearchBarEl.hidden = true;
+  propsSearchInputEl.value = "";
+  propsSearchClearEl.hidden = true;
   elementTreeEl.innerHTML =
     '<p class="panel-hint">Load an IFC model to browse elements.</p>';
   elementPropsEl.hidden = true;
@@ -826,6 +845,8 @@ function switchViewMode(mode: ViewMode): void {
   btnModeCat.classList.toggle("active", mode === "category");
   btnModeSpatial.classList.toggle("active", mode === "spatial");
   btnModeSpatial.disabled = spatialRoot === null;
+  treeSearchInputEl.value = "";
+  treeSearchClearEl.hidden = true;
   renderActiveTree();
 }
 
@@ -841,6 +862,8 @@ function renderActiveTree(): void {
   } else {
     renderCategoryTree();
   }
+  const q = treeSearchInputEl.value.trim();
+  if (q) applyTreeFilter(q);
 }
 
 // ── Category tree (Phase A) ───────────────────────────────────────────────────
@@ -948,8 +971,9 @@ function makeElementLi(el: IFCElement): HTMLLIElement {
   const btn = document.createElement("button");
   btn.className = "tree-item";
   if (el.expressId === selectedExpressId) btn.classList.add("selected");
-  btn.textContent = el.name;
-  btn.title = `${el.name}  (#${el.expressId})`;
+  const label = el.name.trim() || `${el.category} #${el.expressId}`;
+  btn.textContent = label;
+  btn.title = `${label}  (#${el.expressId})`;
   btn.dataset.eid = String(el.expressId);
   btn.addEventListener("click", () => selectElement(el.expressId));
   li.appendChild(btn);
@@ -965,6 +989,9 @@ function selectElement(expressId: number): void {
     clearHighlight();
     elementPropsEl.hidden = true;
     elementPropsEl.innerHTML = "";
+    propsSearchBarEl.hidden = true;
+    propsSearchInputEl.value = "";
+    propsSearchClearEl.hidden = true;
     document
       .querySelectorAll(".tree-item.selected")
       .forEach((el) => el.classList.remove("selected"));
@@ -1038,13 +1065,71 @@ function transferProp(pset: string, key: string, value: string, btn: HTMLButtonE
     });
 }
 
+// ── Search / filter ───────────────────────────────────────────────────────────
+
+function applyTreeFilter(query: string): void {
+  const q = query.toLowerCase().trim();
+  if (!q) {
+    elementTreeEl.querySelectorAll<HTMLElement>("li").forEach((li) => { li.hidden = false; });
+    elementTreeEl.querySelectorAll<HTMLDetailsElement>(".tree-cat").forEach((d) => { d.hidden = false; });
+    return;
+  }
+  elementTreeEl.querySelectorAll<HTMLButtonElement>(".tree-item").forEach((btn) => {
+    (btn.parentElement as HTMLLIElement).hidden = !btn.textContent!.toLowerCase().includes(q);
+  });
+  const allDetails = Array.from(
+    elementTreeEl.querySelectorAll<HTMLDetailsElement>(".tree-cat"),
+  ).reverse();
+  for (const details of allDetails) {
+    const hasVisible = details.querySelectorAll<HTMLElement>("li:not([hidden])").length > 0;
+    details.hidden = !hasVisible;
+    if (hasVisible) details.open = true;
+  }
+}
+
+function applyPropsFilter(query: string): void {
+  const q = query.toLowerCase().trim();
+  if (!q) {
+    elementPropsEl.querySelectorAll<HTMLElement>(".prop-row").forEach((r) => { r.hidden = false; });
+    elementPropsEl.querySelectorAll<HTMLElement>(".pset-block").forEach((b) => { b.hidden = false; });
+    return;
+  }
+  elementPropsEl.querySelectorAll<HTMLElement>(".prop-row").forEach((row) => {
+    const key = row.querySelector(".prop-key")?.textContent?.toLowerCase() ?? "";
+    const val = row.querySelector(".prop-val")?.textContent?.toLowerCase() ?? "";
+    row.hidden = !key.includes(q) && !val.includes(q);
+  });
+  elementPropsEl.querySelectorAll<HTMLElement>(".pset-block").forEach((block) => {
+    const visibleRows = block.querySelectorAll<HTMLElement>(".prop-row:not([hidden])").length;
+    block.hidden = visibleRows === 0;
+    if (visibleRows > 0) block.classList.remove("collapsed");
+  });
+}
+
+function psetGroupHtml(label: string, rows: string[]): string {
+  const isCollapsed = localStorage.getItem(`geoifc.pset.${label}`) === "1";
+  const collapsedClass = isCollapsed ? " collapsed" : "";
+  return (
+    `<div class="pset-block${collapsedClass}">` +
+    `<div class="pset-name" data-label="${escHtml(label)}">` +
+    `<span class="pset-chevron"></span>` +
+    `${escHtml(label)}` +
+    `</div>` +
+    `<div class="pset-rows">` +
+    rows.join("\n") +
+    `</div>` +
+    `</div>`
+  );
+}
+
 function renderProps(expressId: number, direct: PropEntry[], psets: PSet[]): void {
   const el = elementsByCategory
     ? [...elementsByCategory.values()].flat().find((e) => e.expressId === expressId)
     : null;
 
-  const name = el?.name ?? `Element #${expressId}`;
+  const rawName = el?.name ?? "";
   const category = el?.category ?? "Unknown";
+  const name = rawName.trim() || `${category} #${expressId}`;
   _lastProps = { expressId, name, category, direct, psets };
 
   const parts: string[] = [];
@@ -1057,21 +1142,13 @@ function renderProps(expressId: number, direct: PropEntry[], psets: PSet[]): voi
   );
 
   if (direct.length > 0) {
-    parts.push(`<div class="pset-block"><div class="pset-name">Attributes</div>`);
-    for (const { key, value } of direct) {
-      parts.push(propRow("", key, value));
-    }
-    parts.push(`</div>`);
+    const rows = direct.map(({ key, value }) => propRow("", key, value));
+    parts.push(psetGroupHtml("Attributes", rows));
   }
 
   for (const pset of psets) {
-    parts.push(
-      `<div class="pset-block"><div class="pset-name">${escHtml(pset.name)}</div>`,
-    );
-    for (const { key, value } of pset.props) {
-      parts.push(propRow(pset.name, key, value));
-    }
-    parts.push(`</div>`);
+    const rows = pset.props.map(({ key, value }) => propRow(pset.name, key, value));
+    parts.push(psetGroupHtml(pset.name, rows));
   }
 
   if (direct.length === 0 && psets.length === 0) {
@@ -1088,6 +1165,22 @@ function renderProps(expressId: number, direct: PropEntry[], psets: PSet[]): voi
     });
   });
 
+  elementPropsEl.querySelectorAll<HTMLElement>(".pset-name").forEach((nameEl) => {
+    const block = nameEl.closest<HTMLElement>(".pset-block")!;
+    nameEl.addEventListener("click", () => {
+      const label = nameEl.dataset.label ?? "";
+      block.classList.toggle("collapsed");
+      if (block.classList.contains("collapsed")) {
+        localStorage.setItem(`geoifc.pset.${label}`, "1");
+      } else {
+        localStorage.removeItem(`geoifc.pset.${label}`);
+      }
+    });
+  });
+
+  propsSearchBarEl.hidden = false;
+  propsSearchInputEl.value = "";
+  propsSearchClearEl.hidden = true;
   elementPropsEl.hidden = false;
 }
 
@@ -1231,8 +1324,11 @@ async function loadIfc(payload: ViewerPayload): Promise<void> {
     renderStoreyBar();
   }
 
-  // Show mode bar; activate category view by default; spatial if structure found
+  // Show mode bar and search bar; activate category view by default; spatial if structure found
   treeModeBar.hidden = false;
+  treeSearchBarEl.hidden = false;
+  treeSearchInputEl.value = "";
+  treeSearchClearEl.hidden = true;
   btnModeSpatial.disabled = spatialRoot === null;
   viewMode = spatialRoot !== null ? "spatial" : "category";
   btnModeCat.classList.toggle("active", viewMode === "category");
@@ -1444,6 +1540,36 @@ document.getElementById("export-spatial-json")!.addEventListener("click", () => 
 document.getElementById("export-cat-json")!.addEventListener("click", () => { exportCategoriesJson(); exportMenu.hidden = true; });
 document.getElementById("export-props-json")!.addEventListener("click", () => { exportPropsJson(); exportMenu.hidden = true; });
 document.getElementById("export-props-csv")!.addEventListener("click", () => { exportPropsCsv(); exportMenu.hidden = true; });
+
+// ── Tree search ───────────────────────────────────────────────────────────────
+
+treeSearchInputEl.addEventListener("input", () => {
+  const q = treeSearchInputEl.value;
+  treeSearchClearEl.hidden = !q;
+  applyTreeFilter(q);
+});
+
+treeSearchClearEl.addEventListener("click", () => {
+  treeSearchInputEl.value = "";
+  treeSearchClearEl.hidden = true;
+  applyTreeFilter("");
+  treeSearchInputEl.focus();
+});
+
+// ── Props search ──────────────────────────────────────────────────────────────
+
+propsSearchInputEl.addEventListener("input", () => {
+  const q = propsSearchInputEl.value;
+  propsSearchClearEl.hidden = !q;
+  applyPropsFilter(q);
+});
+
+propsSearchClearEl.addEventListener("click", () => {
+  propsSearchInputEl.value = "";
+  propsSearchClearEl.hidden = true;
+  applyPropsFilter("");
+  propsSearchInputEl.focus();
+});
 
 // ── Props key-column resize ───────────────────────────────────────────────────
 
