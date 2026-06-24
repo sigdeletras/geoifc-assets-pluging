@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from geoifcassets.adapters.qgis.i18n import tr
+from geoifcassets.core.models import MetricSource, ModelMetric
 
 
 @dataclass(frozen=True)
@@ -37,12 +38,18 @@ class GeoIfcAssetsDock:
         on_open_viewer: Callable[[], None],
         viewer_widget: Any | None = None,
         on_generate_footprint: Callable[[], None] | None = None,
+        on_metric_transfer: Callable[[ModelMetric], None] | None = None,
+        on_browse_ifc: Callable[[], None] | None = None,
+        on_create_temp_layer: Callable[[str], None] | None = None,
+        on_add_to_layer: Callable[[], None] | None = None,
     ) -> None:
         from qgis.PyQt.QtWidgets import (
             QComboBox,
             QDockWidget,
+            QFrame,
             QHBoxLayout,
             QLabel,
+            QMenu,
             QPushButton,
             QTabWidget,
             QTableWidget,
@@ -53,6 +60,7 @@ class GeoIfcAssetsDock:
 
         self._on_refresh_layers = on_refresh_layers
         self._on_layer_selected = on_layer_selected
+        self._on_metric_transfer = on_metric_transfer
         self._on_feature_selected = on_feature_selected
         self._layer_by_row: dict[int, str] = {}
         self._feature_by_row: dict[int, int] = {}
@@ -73,6 +81,23 @@ class GeoIfcAssetsDock:
         viewer_tab = QWidget()
         viewer_layout = QVBoxLayout(viewer_tab)
         viewer_layout.setContentsMargins(0, 0, 0, 0)
+
+        self._browse_ifc_btn = QPushButton(tr("GeoIfcAssets", "Browse IFC file…"))
+        self._browse_ifc_btn.setToolTip(
+            tr("GeoIfcAssets", "Open an IFC file directly without a GIS layer")
+        )
+        if on_browse_ifc is not None:
+            self._browse_ifc_btn.clicked.connect(on_browse_ifc)
+        layer_layout.addWidget(self._browse_ifc_btn)
+
+        _sep = QFrame()
+        try:
+            _sep.setFrameShape(QFrame.HLine)
+            _sep.setFrameShadow(QFrame.Sunken)
+        except AttributeError:
+            _sep.setFrameShape(QFrame.Shape.HLine)
+            _sep.setFrameShadow(QFrame.Shadow.Sunken)
+        layer_layout.addWidget(_sep)
 
         self._layer_combo = QComboBox()
         self._layer_combo.currentIndexChanged.connect(self._select_layer_row)
@@ -108,6 +133,26 @@ class GeoIfcAssetsDock:
         self._status_label.setWordWrap(True)
         properties_layout.addWidget(self._status_label)
 
+        self._metrics_header = QLabel(tr("GeoIfcAssets", "Model metrics"))
+        font = self._metrics_header.font()
+        font.setBold(True)
+        self._metrics_header.setFont(font)
+        self._metrics_header.setVisible(False)
+        properties_layout.addWidget(self._metrics_header)
+
+        self._metrics_table = QTableWidget(0, 4)
+        self._metrics_table.setHorizontalHeaderLabels([
+            tr("GeoIfcAssets", "Property"),
+            tr("GeoIfcAssets", "Value"),
+            tr("GeoIfcAssets", "Source"),
+            "",
+        ])
+        self._metrics_table.verticalHeader().setVisible(False)
+        self._metrics_table.setMaximumHeight(200)
+        self._metrics_table.setSelectionMode(_table_selection_mode())
+        self._metrics_table.setVisible(False)
+        properties_layout.addWidget(self._metrics_table)
+
         self._user_log = QTextEdit()
         self._user_log.setReadOnly(True)
         self._user_log.setPlaceholderText(tr("GeoIfcAssets", "Workflow messages"))
@@ -137,6 +182,40 @@ class GeoIfcAssetsDock:
         footprint_bar_layout.addWidget(self._storey_label, 1)
         footprint_bar_layout.addWidget(self._footprint_btn)
         viewer_layout.addWidget(footprint_bar)
+
+        gis_actions_bar = QWidget()
+        gis_actions_layout = QHBoxLayout(gis_actions_bar)
+        gis_actions_layout.setContentsMargins(4, 2, 4, 4)
+
+        self._new_layer_btn = QPushButton(tr("GeoIfcAssets", "New temp layer…"))
+        self._new_layer_btn.setEnabled(False)
+        self._new_layer_btn.setToolTip(
+            tr("GeoIfcAssets", "Create a new temporary GIS layer linked to the current IFC")
+        )
+        self._new_layer_menu = QMenu()
+        for _geom_key, _geom_label in (
+            ("Point", tr("GeoIfcAssets", "Point")),
+            ("Line", tr("GeoIfcAssets", "Line")),
+            ("Polygon", tr("GeoIfcAssets", "Polygon")),
+        ):
+            _action = self._new_layer_menu.addAction(_geom_label)
+            if on_create_temp_layer is not None:
+                _action.triggered.connect(
+                    lambda checked=False, gt=_geom_key: on_create_temp_layer(gt)
+                )
+        self._new_layer_btn.setMenu(self._new_layer_menu)
+
+        self._add_to_layer_btn = QPushButton(tr("GeoIfcAssets", "Add to existing layer…"))
+        self._add_to_layer_btn.setEnabled(False)
+        self._add_to_layer_btn.setToolTip(
+            tr("GeoIfcAssets", "Add a new feature to an existing GIS layer with the current IFC")
+        )
+        if on_add_to_layer is not None:
+            self._add_to_layer_btn.clicked.connect(on_add_to_layer)
+
+        gis_actions_layout.addWidget(self._new_layer_btn, 1)
+        gis_actions_layout.addWidget(self._add_to_layer_btn, 1)
+        viewer_layout.addWidget(gis_actions_bar)
 
         tabs.addTab(layer_tab, tr("GeoIfcAssets", "Layer/Features"))
         tabs.addTab(properties_tab, tr("GeoIfcAssets", "Properties"))
@@ -169,6 +248,53 @@ class GeoIfcAssetsDock:
         else:
             self._storey_label.setText(tr("GeoIfcAssets", "No storey selected"))
             self._footprint_btn.setEnabled(False)
+
+    def set_ifc_actions_enabled(self, enabled: bool) -> None:
+        """Enable or disable the IFC-to-GIS action buttons in the viewer tab."""
+        self._new_layer_btn.setEnabled(enabled)
+        self._add_to_layer_btn.setEnabled(enabled)
+
+    def set_model_metrics(self, metrics: list[ModelMetric]) -> None:
+        """Populate the model metrics table and show it."""
+        from qgis.PyQt.QtWidgets import QPushButton
+
+        self._metrics_table.setRowCount(len(metrics))
+        for row, metric in enumerate(metrics):
+            if metric.unit and metric.unit != "count":
+                value_str = f"{metric.value} {metric.unit}"
+            else:
+                value_str = str(metric.value)
+            source_str = (
+                "QtoSet" if metric.source is MetricSource.QTO
+                else tr("GeoIfcAssets", "Computed")
+            )
+
+            self._metrics_table.setItem(row, 0, self._table_item(metric.label))
+            self._metrics_table.setItem(row, 1, self._table_item(value_str))
+            self._metrics_table.setItem(row, 2, self._table_item(source_str))
+
+            btn = QPushButton("→")
+            btn.setMaximumWidth(32)
+            btn.setToolTip(
+                tr("GeoIfcAssets", "Transfer «{label}» to a GIS field").format(label=metric.label)
+            )
+            if self._on_metric_transfer is not None:
+                btn.clicked.connect(
+                    lambda checked=False, m=metric: self._on_metric_transfer(m)  # type: ignore[misc]
+                )
+            self._metrics_table.setCellWidget(row, 3, btn)
+
+        has_metrics = len(metrics) > 0
+        self._metrics_header.setVisible(has_metrics)
+        self._metrics_table.setVisible(has_metrics)
+        if has_metrics:
+            self._metrics_table.resizeColumnsToContents()
+
+    def clear_model_metrics(self) -> None:
+        """Remove all metric rows and hide the metrics section."""
+        self._metrics_table.setRowCount(0)
+        self._metrics_header.setVisible(False)
+        self._metrics_table.setVisible(False)
 
     def refresh_layers(self) -> None:
         self._updating_ui = True

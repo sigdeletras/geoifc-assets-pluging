@@ -699,6 +699,22 @@ Criterios de aceptacion:
 
 ---
 
+### HU-12 Visualizar un IFC y crear o enriquecer una capa GIS sin capa previa
+
+Como tecnico GIS que acaba de arrancar el complemento sin una capa GIS de activos, quiero abrir un IFC directamente y generar o enriquecer una capa GIS a partir del resultado, para iniciar el flujo de inventario sin necesidad de preparar una capa previa.
+
+Criterios de aceptacion:
+
+* El usuario puede abrir un fichero IFC directamente desde el panel del complemento, sin necesidad de tener una capa GIS cargada.
+* El visor IFC se abre con el fichero seleccionado y se muestran las metricas del modelo.
+* El usuario puede crear una capa de memoria temporal (puntual, lineal o poligonal) con los campos minimos `ifc_file` e `ifc_url`. Tras confirmar el dialogo, el complemento activa la herramienta de digitalizacion de QGIS para que el usuario dibuje la geometria en el lienzo.
+* El usuario puede generar una huella geografica a partir de una planta del IFC (HU-E04) cuando el modelo esta georreferenciado. La capa de huella incluye el campo `ifc_url` para que sea reconocida por el combo de capas del complemento.
+* El usuario puede anadir un nuevo registro a una capa GIS existente. Tras confirmar el dialogo, el complemento activa la digitalizacion. Al terminar de dibujar, los campos `ifc_path` o `ifc_url` e `ifc_file` se rellenan automaticamente si existen en la capa destino.
+* Los botones de accion ("New temp layer…" y "Add to existing layer…") se habilitan cuando hay un IFC cargado en el visor, tanto si se abrio via "Browse IFC file…" como si se abrio desde un feature GIS.
+* Todos los mensajes del flujo son traducibles a ingles y espanol.
+
+---
+
 ## 7.3 Historias evolutivas
 
 ### HU-E01 Guardar un mapeo reutilizable
@@ -1242,7 +1258,7 @@ sin necesidad de replicar el modelo BIM dentro del SIG.
 
 ---
 
-# 16. Estado de implementacion (2026-06-23)
+# 16. Estado de implementacion (2026-06-24)
 
 ## 16.1 Resumen por fase
 
@@ -1262,14 +1278,15 @@ sin necesidad de replicar el modelo BIM dentro del SIG.
 | HU-01 | Validar la capa GIS de trabajo | Completa | Selector de capa y feature en dock; validacion de `ifc_path` / `ifc_url`; mensajes de error claros. |
 | HU-02 | Abrir el IFC en visor embebido | Completa | Subproceso `webviewer_app.py` + SwiftShader + polling HTTP. El subproceso se lanza de forma lazy al seleccionar el primer feature (no al abrir el panel). Seleccionar un feature activa automaticamente la pestana IFC Viewer. La accion de capa QGIS no esta implementada (aplazada). |
 | HU-03 | Seleccionar un elemento IFC | Completa | Arbol por categoria (Fase A), arbol espacial (Fase B), ray-casting 3D, zoom de camara al elemento seleccionado. |
-| HU-04 | Consultar propiedades BIM | Completa | Atributos directos y PropertySets mostrados en el panel del visor. Quantity Sets pendientes de verificar en el visor JS. Busqueda/filtrado de propiedades por texto no implementado. |
-| HU-05 | Seleccionar propiedades para cargar en GIS | Parcial | Transferencia propiedad a propiedad con boton `->`. No existe seleccion multiple de propiedades en un solo paso. |
+| HU-04 | Consultar propiedades BIM | Parcial | Atributos directos y PropertySets mostrados en el panel del visor. Extractores Python `model_info_extractor.py` y `quantity_extractor.py` implementados. Panel de metricas de modelo en el dock aun no conectado (HU-04-B pendiente). |
+| HU-05 | Seleccionar propiedades para cargar en GIS | Parcial | Transferencia propiedad a propiedad con boton `->` (elementos IFC individuales). Nueva fuente de datos: metricas agregadas de modelo (metadatos + cantidades). Panel de seleccion de metricas en el dock pendiente. |
 | HU-06 | Mapear propiedades IFC a campos GIS | Completa | Dialogo BIM->GIS con campo existente o campo nuevo (Fase C: POST /transfer + QDialog + `changeAttributeValue`). |
 | HU-07 | Crear campos GIS controladamente | Completa | El dialogo de transferencia solicita confirmacion antes de crear el campo. |
 | HU-08 | Escribir valores IFC en atributos GIS | Completa | Escritura del valor funcional. `ifc_status`, `ifc_updated_at` e `ifc_error` se actualizan automaticamente si existen en la capa; se omiten sin error si no existen. |
 | HU-09 | Usar el complemento en ingles y espanol | Parcial | Todos los textos usan `tr()`. Archivos `.ts` en ingles y espanol presentes. Archivos `.qm` compilados ausentes — las traducciones no estan activas en QGIS. |
 | HU-10 | Instalar y validar el complemento | Completa | Estructura de repositorio correcta, `metadata.txt`, scripts de empaquetado presentes. |
 | HU-11 | Consultar el estado de los flujos | Completa | Log de usuario en dock (QTextEdit). Developer logs via `PluginLogger`. Sin `print()` en el plugin distribuible. |
+| HU-12 | Visualizar IFC y crear capa GIS sin capa previa | Completa | Boton "Browse IFC file…" en tab Layer/Features. Barra de acciones en tab IFC Viewer: "New temp layer…" (Point/Line/Polygon, digitaliza con valores por defecto pre-rellenos) y "Add to existing layer…" (signal `featureAdded` rellena campos IFC tras el dibujo). Capa de huella incluye `ifc_url`. |
 
 ---
 
@@ -1288,17 +1305,19 @@ sin necesidad de replicar el modelo BIM dentro del SIG.
 
 | Modulo | Ruta | Descripcion |
 |--------|------|-------------|
-| Plugin principal | `adapters/qgis/plugin.py` | Punto central: inicializacion, dock, visor, transferencia BIM->GIS, huella IFC. |
-| Dock principal | `adapters/qgis/dock.py` | Tabs Layer/Features, Properties, IFC Viewer. Selector de capa y feature, log de usuario, barra de planta/huella. |
+| Plugin principal | `adapters/qgis/plugin.py` | Punto central: inicializacion, dock, visor, transferencia BIM->GIS, huella IFC. Flujo sin capa GIS previa: `_browse_ifc_file`, `_show_create_temp_layer_dialog`, `_show_add_to_layer_dialog`. |
+| Dock principal | `adapters/qgis/dock.py` | Tabs Layer/Features, Properties, IFC Viewer. Selector de capa y feature, log de usuario, barra de planta/huella. Boton "Browse IFC file…" y barra de acciones GIS (New temp layer / Add to existing layer). |
 | Visor IFC | `adapters/qgis/viewer.py` | `IfcViewerDock`: QProcess + HTTP server local + polling `/current.json` + cola de transferencias. SwiftShader via `_ensure_swiftshader_flag`. Subproceso lazy: se lanza en el primer `open_reference()`, no en `__init__`. |
 | Subproceso visor | `webviewer_app.py` | Proceso independiente con `QWebEngineView`. Carga la SPA web-ifc + Three.js. |
 | SPA web-ifc | `webviewer/` | HTML + bundle Vite (JS + CSS + web-ifc WASM). Renderizado 3D, arbol de elementos, ray-casting, selector de plantas, boton de transferencia propiedad. |
 | Extractor de huella | `adapters/ifc/footprint_extractor.py` | Detecta `IfcMapConversion`, extrae geometria de `IfcBuildingStorey`, aplica transformacion georreferenciada, devuelve WKT. |
-| Capa de huella | `adapters/qgis/footprint_layer.py` | Crea capa de memoria QGIS con la huella y la anade al proyecto. |
+| Capa de huella | `adapters/qgis/footprint_layer.py` | Crea capa de memoria QGIS con la huella y la anade al proyecto. Incluye campo `ifc_url` (ruta completa) para que la capa sea reconocida por el combo de capas del complemento. |
 | Lector IFC | `adapters/ifc/reader.py` | Lee esquema IFC (IFC2x3 / IFC4 / IFC4.3) sin IfcOpenShell completo (parsing ligero del header). |
 | Lector de features | `adapters/qgis/feature_reader.py` | Lee `ifc_path` / `ifc_url` del feature seleccionado y resuelve conflictos. |
 | Escritor de features | `adapters/qgis/feature_writer.py` | Escribe atributos en la capa GIS. |
-| Modelos core | `core/models.py` | `IfcReference`, `IfcReferenceKind`, `IfcModelSummary`, `LayerRequirementResult`. |
+| Modelos core | `core/models.py` | `IfcReference`, `IfcReferenceKind`, `IfcModelSummary`, `LayerRequirementResult`, `ModelMetric`, `MetricSource`. |
+| Extractor de info de modelo | `adapters/ifc/model_info_extractor.py` | Extrae metadatos de `IfcProject`, `IfcBuilding`, `IfcCoordinateReferenceSystem`, `Pset_BuildingCommon`. Devuelve lista de `ModelMetric`. |
+| Extractor de cantidades | `adapters/ifc/quantity_extractor.py` | Cuenta elementos por tipo IFC y suma areas desde `QuantitySet` formales. Fallback con prefijo `ifc_calc_` si el QtoSet esta ausente. Devuelve lista de `ModelMetric`. |
 | Logging | `services/logging.py` | `PluginLogger` con developer logs y user logs; sin `print()`. |
 | Compat QGIS | `adapters/qgis/compat.py` | Utilidades de compatibilidad QGIS 3 / QGIS 4. |
 | i18n | `adapters/qgis/i18n.py` | Funcion `tr()` para textos traducibles. |
@@ -1327,9 +1346,10 @@ Sin tests de integracion ni tests con entorno QGIS real aun.
 
 1. **Compilar archivos .qm** — ejecutar `scripts/compile_translations.ps1` y verificar carga correcta en QGIS para activar traducciones EN/ES (HU-09).
 2. ~~**Campos ifc_status / ifc_updated_at**~~ — Completado. `build_status_updates` en `core/mapping.py` + `_apply_status_updates` en `plugin.py` (HU-08).
-3. **Quantity Sets en el visor** — verificar que el visor web muestra Quantity Sets y que el boton `->` funciona para ellos (HU-04).
-4. **Tests de integracion** — al menos un test de integracion con fixture IFC real para la extraccion de propiedades y la huella geografica (Fase 3).
-5. **Documentacion de usuario** — `docs/manual_usuario.md` y `docs/instalacion.md` no existen aun (Fase 3).
+3. ~~**Panel de metricas de modelo**~~ — Completado. `model_info_extractor.py` + `quantity_extractor.py` + tabla de metricas en dock (`set_model_metrics`) + boton → por metrica (HU-04/HU-05).
+4. **Quantity Sets en el visor JS** — verificar que el visor web muestra Quantity Sets y que el boton `->` de elementos individuales funciona para ellos (HU-04).
+5. **Tests de integracion** — al menos un test de integracion con fixture IFC real para la extraccion de propiedades y la huella geografica (Fase 3).
+6. **Documentacion de usuario** — `docs/manual_usuario.md` y `docs/instalacion.md` no existen aun (Fase 3).
 
 ---
 
