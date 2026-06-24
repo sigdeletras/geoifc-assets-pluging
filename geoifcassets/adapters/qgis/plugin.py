@@ -162,7 +162,7 @@ class GeoIfcAssetsPlugin:
         if self._current_reference is not None and self._viewer_dock is not None:
             self._viewer_dock.open_reference(self._current_reference)
             if self._dock is not None:
-                self._dock.switch_to_viewer_tab()
+                self._dock.switch_to_layer_tab()
             ifc_path = self._current_reference.value
             if not ifc_path.startswith(("http://", "https://")):
                 self._extract_and_show_metrics(ifc_path)
@@ -216,7 +216,7 @@ class GeoIfcAssetsPlugin:
         if self._viewer_dock is not None:
             self._viewer_dock.open_reference(self._current_reference)
         if self._dock is not None:
-            self._dock.switch_to_viewer_tab()
+            self._dock.switch_to_layer_tab()
 
         read_result = self._ifc_reader.read_summary(self._current_reference.value)
         if read_result.status is IfcReadStatus.OK and read_result.summary is not None:
@@ -644,7 +644,7 @@ class GeoIfcAssetsPlugin:
         if self._viewer_dock is not None:
             self._viewer_dock.open_reference(self._current_reference)
         if self._dock is not None:
-            self._dock.switch_to_viewer_tab()
+            self._dock.switch_to_layer_tab()
             self._dock.set_active_storey(None)
             self._dock.set_ifc_actions_enabled(True)
             self._dock.add_user_log(

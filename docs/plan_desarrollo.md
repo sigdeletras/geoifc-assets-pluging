@@ -1307,7 +1307,7 @@ sin necesidad de replicar el modelo BIM dentro del SIG.
 | Modulo | Ruta | Descripcion |
 |--------|------|-------------|
 | Plugin principal | `adapters/qgis/plugin.py` | Punto central: inicializacion, dock, visor, transferencia BIM->GIS, huella IFC. Flujo sin capa GIS previa: `_browse_ifc_file`, `_show_create_temp_layer_dialog`, `_show_add_to_layer_dialog`. |
-| Dock principal | `adapters/qgis/dock.py` | Tabs Layer/Features, Properties, IFC Viewer. Selector de capa y feature, log de usuario, barra de planta/huella. Boton "Browse IFC file…" y barra de acciones GIS (New temp layer / Add to existing layer). |
+| Dock principal | `adapters/qgis/dock.py` | Tabs GeoIFC y Properties. Tab GeoIFC: Browse IFC file, selector de capa y feature, estado del visor IFC, barra de planta/huella, botones New temp layer / Add to existing layer. Tab Properties: metricas de modelo y log de usuario. La antigua pestaña IFC Viewer fue eliminada; sus controles se integraron en GeoIFC. |
 | Visor IFC | `adapters/qgis/viewer.py` | `IfcViewerDock`: QProcess + HTTP server local + polling `/current.json` + cola de transferencias. SwiftShader via `_ensure_swiftshader_flag`. Subproceso lazy: se lanza en el primer `open_reference()`, no en `__init__`. |
 | Subproceso visor | `webviewer_app.py` | Proceso independiente con `QWebEngineView`. Carga la SPA web-ifc + Three.js. |
 | SPA web-ifc | `webviewer/` | HTML + bundle Vite (JS + CSS + web-ifc WASM). Renderizado 3D, arbol de elementos, ray-casting, selector de plantas, boton de transferencia propiedad. |

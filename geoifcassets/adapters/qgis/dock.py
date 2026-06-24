@@ -78,9 +78,6 @@ class GeoIfcAssetsDock:
         layer_layout = QVBoxLayout(layer_tab)
         properties_tab = QWidget()
         properties_layout = QVBoxLayout(properties_tab)
-        viewer_tab = QWidget()
-        viewer_layout = QVBoxLayout(viewer_tab)
-        viewer_layout.setContentsMargins(0, 0, 0, 0)
 
         self._browse_ifc_btn = QPushButton(tr("GeoIfcAssets", "Browse IFC file…"))
         self._browse_ifc_btn.setToolTip(
@@ -164,9 +161,7 @@ class GeoIfcAssetsDock:
         layer_layout.addWidget(self._open_button)
 
         if viewer_widget is not None:
-            viewer_layout.addWidget(viewer_widget)
-        else:
-            viewer_layout.addStretch(1)
+            layer_layout.addWidget(viewer_widget)
 
         footprint_bar = QWidget()
         footprint_bar_layout = QHBoxLayout(footprint_bar)
@@ -181,7 +176,7 @@ class GeoIfcAssetsDock:
             self._footprint_btn.clicked.connect(on_generate_footprint)
         footprint_bar_layout.addWidget(self._storey_label, 1)
         footprint_bar_layout.addWidget(self._footprint_btn)
-        viewer_layout.addWidget(footprint_bar)
+        layer_layout.addWidget(footprint_bar)
 
         gis_actions_bar = QWidget()
         gis_actions_layout = QHBoxLayout(gis_actions_bar)
@@ -215,11 +210,10 @@ class GeoIfcAssetsDock:
 
         gis_actions_layout.addWidget(self._new_layer_btn, 1)
         gis_actions_layout.addWidget(self._add_to_layer_btn, 1)
-        viewer_layout.addWidget(gis_actions_bar)
+        layer_layout.addWidget(gis_actions_bar)
 
-        tabs.addTab(layer_tab, tr("GeoIfcAssets", "Layer/Features"))
+        tabs.addTab(layer_tab, tr("GeoIfcAssets", "GeoIFC"))
         tabs.addTab(properties_tab, tr("GeoIfcAssets", "Properties"))
-        tabs.addTab(viewer_tab, tr("GeoIfcAssets", "IFC Viewer"))
         layout.addWidget(tabs)
 
         self.widget.setWidget(content)
@@ -228,8 +222,8 @@ class GeoIfcAssetsDock:
     def qwidget(self) -> Any:
         return self.widget
 
-    def switch_to_viewer_tab(self) -> None:
-        self._tabs.setCurrentIndex(2)
+    def switch_to_layer_tab(self) -> None:
+        self._tabs.setCurrentIndex(0)
 
     def set_status(self, message: str, can_open_viewer: bool = False) -> None:
         self._status_label.setText(message)
