@@ -56,6 +56,7 @@ body {
   overflow: hidden;
   background: #ffffff;
   border-left: 1px solid #e0e6eb;
+  position: relative;
 }
 
 /* ── Panel resizer handle ──────────────────────────────────────────────────── */
@@ -150,11 +151,56 @@ strong {
   cursor: default;
 }
 
-.tree-collapse-btn {
+.tree-collapse-btn,
+.tree-export-btn {
   flex: none;
   padding: 4px 9px;
   font-size: 14px;
   line-height: 1;
+}
+
+/* ── Export dropdown ───────────────────────────────────────────────────────── */
+
+.export-menu {
+  position: absolute;
+  background: #ffffff;
+  border: 1px solid #ccd7e0;
+  border-radius: 5px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.13);
+  z-index: 200;
+  min-width: 180px;
+  padding: 4px 0;
+}
+
+.export-group-label {
+  padding: 6px 12px 2px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8898a9;
+}
+
+.export-item {
+  display: block;
+  width: 100%;
+  padding: 6px 20px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+  color: #2e4053;
+  cursor: pointer;
+}
+
+.export-item:hover:not(:disabled) {
+  background: #edf3fb;
+  color: #1a5276;
+}
+
+.export-item:disabled {
+  color: #b0bec5;
+  cursor: default;
 }
 
 /* ── Element tree ──────────────────────────────────────────────────────────── */

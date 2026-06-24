@@ -138,6 +138,8 @@ const treeModeBar = document.getElementById("tree-mode-bar") as HTMLElement;
 const btnModeCat = document.getElementById("btn-mode-cat") as HTMLButtonElement;
 const btnModeSpatial = document.getElementById("btn-mode-spatial") as HTMLButtonElement;
 const btnCollapseTree = document.getElementById("btn-collapse-tree") as HTMLButtonElement;
+const btnExport = document.getElementById("btn-export") as HTMLButtonElement;
+const exportMenu = document.getElementById("export-menu") as HTMLElement;
 const storeyBarEl = document.getElementById("storey-bar") as HTMLElement;
 const btn2DView = document.getElementById("btn-view-2d") as HTMLButtonElement;
 
@@ -648,6 +650,7 @@ function clearTreeUI(): void {
     '<p class="panel-hint">Load an IFC model to browse elements.</p>';
   elementPropsEl.hidden = true;
   elementPropsEl.innerHTML = "";
+  _lastProps = null;
 }
 
 function reset2DState(): void {
@@ -1042,6 +1045,7 @@ function renderProps(expressId: number, direct: PropEntry[], psets: PSet[]): voi
 
   const name = el?.name ?? `Element #${expressId}`;
   const category = el?.category ?? "Unknown";
+  _lastProps = { expressId, name, category, direct, psets };
 
   const parts: string[] = [];
   parts.push(
@@ -1336,6 +1340,110 @@ setTimeout(() => {
   void pollCurrentIfc();
   setInterval(() => void pollCurrentIfc(), 1500);
 }, 800);
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+function _downloadBlob(content: string, filename: string, mime: string): void {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function _ifcBaseName(): string {
+  const src = sourceName.textContent ?? "ifc";
+  return src.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_") || "ifc";
+}
+
+function _spatialNodeToObj(node: SpatialNode): object {
+  return {
+    expressId: node.expressId,
+    name: node.name,
+    type: node.typeLabel,
+    totalElements: node.totalCount,
+    elements: node.elements.map((e) => ({ expressId: e.expressId, name: e.name, category: e.category })),
+    children: node.children.map(_spatialNodeToObj),
+  };
+}
+
+function exportSpatialJson(): void {
+  if (!spatialRoot) return;
+  _downloadBlob(
+    JSON.stringify(_spatialNodeToObj(spatialRoot), null, 2),
+    `${_ifcBaseName()}_spatial.json`,
+    "application/json",
+  );
+}
+
+function exportCategoriesJson(): void {
+  if (!elementsByCategory) return;
+  const obj: Record<string, object[]> = {};
+  for (const [cat, els] of elementsByCategory) {
+    obj[cat] = els.map((e) => ({ expressId: e.expressId, name: e.name }));
+  }
+  _downloadBlob(JSON.stringify(obj, null, 2), `${_ifcBaseName()}_categories.json`, "application/json");
+}
+
+function exportPropsJson(): void {
+  if (!_lastProps) return;
+  const { expressId, name, category, direct, psets } = _lastProps;
+  const obj = {
+    expressId,
+    name,
+    category,
+    attributes: Object.fromEntries(direct.map((p) => [p.key, p.value])),
+    propertySets: Object.fromEntries(psets.map((ps) => [ps.name, Object.fromEntries(ps.props.map((p) => [p.key, p.value]))])),
+  };
+  _downloadBlob(JSON.stringify(obj, null, 2), `${_ifcBaseName()}_element_${expressId}.json`, "application/json");
+}
+
+function exportPropsCsv(): void {
+  if (!_lastProps) return;
+  const { expressId, direct, psets } = _lastProps;
+  const rows: string[][] = [["pset", "key", "value"]];
+  for (const { key, value } of direct) rows.push(["Attributes", key, value]);
+  for (const ps of psets) {
+    for (const { key, value } of ps.props) rows.push([ps.name, key, value]);
+  }
+  const csv = rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  _downloadBlob(csv, `${_ifcBaseName()}_element_${expressId}.csv`, "text/csv");
+}
+
+function _openExportMenu(): void {
+  const noSpatial = !spatialRoot;
+  const noCat = !elementsByCategory || elementsByCategory.size === 0;
+  const noProps = !_lastProps;
+  (document.getElementById("export-spatial-json") as HTMLButtonElement).disabled = noSpatial;
+  (document.getElementById("export-cat-json") as HTMLButtonElement).disabled = noCat;
+  (document.getElementById("export-props-json") as HTMLButtonElement).disabled = noProps;
+  (document.getElementById("export-props-csv") as HTMLButtonElement).disabled = noProps;
+
+  const panel = document.querySelector<HTMLElement>(".viewer-panel")!;
+  const panelRect = panel.getBoundingClientRect();
+  const btnRect = btnExport.getBoundingClientRect();
+  exportMenu.style.top = `${btnRect.bottom - panelRect.top + 4}px`;
+  exportMenu.style.right = `${panelRect.right - btnRect.right}px`;
+  exportMenu.hidden = false;
+}
+
+btnExport.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (!exportMenu.hidden) { exportMenu.hidden = true; return; }
+  _openExportMenu();
+});
+
+document.addEventListener("click", () => { exportMenu.hidden = true; });
+exportMenu.addEventListener("click", (e) => e.stopPropagation());
+
+document.getElementById("export-spatial-json")!.addEventListener("click", () => { exportSpatialJson(); exportMenu.hidden = true; });
+document.getElementById("export-cat-json")!.addEventListener("click", () => { exportCategoriesJson(); exportMenu.hidden = true; });
+document.getElementById("export-props-json")!.addEventListener("click", () => { exportPropsJson(); exportMenu.hidden = true; });
+document.getElementById("export-props-csv")!.addEventListener("click", () => { exportPropsCsv(); exportMenu.hidden = true; });
 
 // ── Props key-column resize ───────────────────────────────────────────────────
 

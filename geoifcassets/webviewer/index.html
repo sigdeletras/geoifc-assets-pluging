@@ -25,6 +25,16 @@
           <button class="tree-mode-btn active" id="btn-mode-cat" title="Group by IFC category">Category</button>
           <button class="tree-mode-btn" id="btn-mode-spatial" title="Browse spatial structure (Project → Site → Building → Storey → Elements)" disabled>Spatial</button>
           <button class="tree-mode-btn tree-collapse-btn" id="btn-collapse-tree" title="Collapse all">⊟</button>
+          <button class="tree-mode-btn tree-export-btn" id="btn-export" title="Export data">⬇</button>
+        </div>
+        <div class="export-menu" id="export-menu" hidden>
+          <div class="export-group-label">Spatial tree</div>
+          <button class="export-item" id="export-spatial-json">JSON</button>
+          <div class="export-group-label">Categories</div>
+          <button class="export-item" id="export-cat-json">JSON</button>
+          <div class="export-group-label">Selected element</div>
+          <button class="export-item" id="export-props-json">JSON</button>
+          <button class="export-item" id="export-props-csv">CSV</button>
         </div>
         <div class="storey-bar" id="storey-bar" hidden aria-label="Floor / storey filter"></div>
         <div id="element-tree" class="panel-tree" role="tree" aria-label="IFC elements">
