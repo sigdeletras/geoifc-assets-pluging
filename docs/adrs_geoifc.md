@@ -1224,3 +1224,45 @@ Se usa el servidor HTTP local ya existente (`IfcHttpServer`) como canal inverso:
 ### Pendiente
 
 - **Elementos sin estructura espacial**: elementos con geometría pero sin `IFCRELCONTAINEDINSPATIALSTRUCTURE` no aparecen en el árbol espacial. Se puede añadir un nodo "Not placed" en iteraciones futuras.
+
+---
+
+# ADR-011: Herramientas de Análisis Visual en el Visor — Medición, Sección y Vistas Ortonormales
+
+## Contexto
+
+Una vez cargado el modelo IFC en el visor 3D, los usuarios necesitan herramientas de inspección geométrica para interpretar el modelo sin salir de QGIS: medir distancias y superficies, cortar el modelo con un plano para ver el interior, y navegar por vistas ortogonales estándar (alzados, plantas) para combinar con la sección transversal.
+
+Todas las herramientas deben ser temporales y visuales (no transfieren datos a GIS), implementarse en la SPA Vite (TypeScript + Three.js) sin dependencias nuevas, y coexistir con el flujo de selección y transferencia BIM→GIS ya existente.
+
+## Decisiones
+
+### Medición (longitud y área)
+
+- **Longitud**: dos clics sobre la malla IFC vía `THREE.Raycaster`; segmento `THREE.Line` + etiqueta de distancia en metros.
+- **Área**: N clics + clic derecho para cerrar polígono; malla semitransparente `THREE.Mesh` (triangulación fan) + etiqueta de área.
+- **Geometría de medición**: `depthTest: false` + `renderOrder ≥ 999` para renderizar sobre el modelo.
+- **Etiquetas**: `<div>` absolutamente posicionados en `#measure-labels` (`pointer-events: none`); reposicionados cada frame en `animate()` con `vector.project(camera)`.
+- **Ciclo de vida**: se borran al cambiar de elemento seleccionado (`clearMeasurements` en `selectElement`) y con el botón ✕ Clear.
+
+### Sección transversal
+
+- **Mecanismo**: `THREE.Plane` + `renderer.clippingPlanes = [sectionPlane]` (clipping global). `renderer.localClippingEnabled` permanece en `false`.
+- **Cálculo del plano**: bounding box del modelo → `threshold = min + (max − min) × posicion%`. Normal según eje; modo "no invertido" muestra la parte inferior (`normal = −axisDir, const = threshold`); modo "invertido" muestra la parte superior.
+- **UI**: panel flotante en la parte inferior del visor (`#section-controls`, `position: absolute; bottom: 40px`) con selector de eje X/Y/Z, slider 0-100 %, botón ↕ flip y botón ✕ off.
+- **Coexistencia**: sección es independiente de los modos de medición (toggles separados).
+
+### Vistas ortonormales y cámara ortográfica
+
+- **Preajustes de vista** (Front/Back/Left/Right/Top/ISO): calculan `targetPos = center + dir × distance` donde `distance = (maxDim × 0.6) / tan(fov/2)`. Animación suave con lerp factor 0,13 por frame en `animate()`.
+- **Cámara `up`**: se asigna antes de iniciar el lerp (p.ej. `(0,0,−1)` para Top) para evitar singularidad polar en OrbitControls.
+- **Cámara ortográfica**: `THREE.OrthographicCamera` secundaria, sincronizada cada frame desde la cámara perspectiva principal. Frustum derivado de `halfH = dist × tan(fov/2)` donde `dist = camera.position.distanceTo(controls.target)`. OrbitControls sigue operando sobre la cámara perspectiva; la cámara ortográfica solo se usa para renderizar.
+- **`renderCamera`**: variable de módulo actualizada en `animate()` apuntando a la cámara activa (perspectiva u ortográfica). `updateMeasureLabels()` y ambos `raycaster.setFromCamera()` usan `renderCamera ?? camera` para precisión en modo ortográfico.
+
+### Archivos modificados
+
+| Archivo | Cambios |
+|---|---|
+| `webviewer_src/index.html` | `#measure-toolbar` ampliado (✂ Section); nuevos `#view-preset-bar`, `#section-controls` |
+| `webviewer_src/src/viewer.ts` | Estado: `MeasureMode`, `VIEW_PRESETS`, `orthoCamera`, `useOrtho`, `renderCamera`, `cameraAnimTarget`, `sectionPlane`. Funciones: `handleMeasureClick`, `finalizeLengthMeasurement`, `finalizeAreaMeasurement`, `updateSectionPlane`, `enableSection`, `disableSection`, `snapToView`, `setOrthoMode` |
+| `webviewer_src/src/viewer.css` | Estilos `.measure-toolbar`, `.measure-btn`, `.measure-label`, `.section-controls`, `.view-preset-bar`, `.view-preset-btn` |

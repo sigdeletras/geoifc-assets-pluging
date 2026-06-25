@@ -1362,5 +1362,6 @@ Los ADRs del proyecto estan documentados en `docs/adrs_geoifc.md`:
 * ADR-008: Visor IFC en subproceso separado con SwiftShader y polling HTTP.
 * ADR-009: Embedding de la ventana del subproceso en el dock QGIS.
 * ADR-010: Fases A-B-C del visor (arbol plano, arbol espacial, transferencia BIM->GIS).
+* ADR-011: Herramientas de analisis visual — medicion, seccion transversal y vistas ortonormales.
 
 La logica de accion de capa QGIS queda aplazada; el flujo desde el selector de features del dock es suficiente para el MVP.
