@@ -80,22 +80,6 @@
     {"name": "extraction_status",       "enabled": true, "group": "Extraction",        "alias": "Extraction status",       "description": "ok or error"},
     {"name": "extraction_error",        "enabled": true, "group": "Extraction",        "alias": "Extraction error",        "description": "Error message when extraction_status = error"}
   ],
-  "class_metrics": [
-    {"ifc_class": "IfcWall",         "prefix": "wall",   "metrics": ["count", "length", "area", "volume"], "enabled": true},
-    {"ifc_class": "IfcSlab",         "prefix": "slab",   "metrics": ["count", "area", "volume"],           "enabled": true},
-    {"ifc_class": "IfcBeam",         "prefix": "beam",   "metrics": ["count", "length", "volume"],         "enabled": true},
-    {"ifc_class": "IfcColumn",       "prefix": "column", "metrics": ["count", "volume"],                   "enabled": true},
-    {"ifc_class": "IfcDoor",         "prefix": "door",   "metrics": ["count", "area"],                     "enabled": true},
-    {"ifc_class": "IfcWindow",       "prefix": "window", "metrics": ["count", "area"],                     "enabled": true},
-    {"ifc_class": "IfcRoof",         "prefix": "roof",   "metrics": ["count", "area"],                     "enabled": true},
-    {"ifc_class": "IfcSpace",        "prefix": "space",  "metrics": ["area", "volume"],                    "enabled": true},
-    {"ifc_class": "IfcPipeSegment",  "prefix": "pipe",   "metrics": ["count", "length", "volume"],         "enabled": true},
-    {"ifc_class": "IfcDuctSegment",  "prefix": "duct",   "metrics": ["count", "length"],                   "enabled": true},
-    {"ifc_class": "IfcCableSegment", "prefix": "cable",  "metrics": ["count", "length"],                   "enabled": true},
-    {"ifc_class": "IfcRoad",         "prefix": "road",   "metrics": ["count", "length", "area"],           "enabled": true},
-    {"ifc_class": "IfcBridge",       "prefix": "bridge", "metrics": ["count", "length"],                   "enabled": true},
-    {"ifc_class": "IfcTunnel",       "prefix": "tunnel", "metrics": ["count", "length"],                   "enabled": true}
-  ],
   "i18n": {
     "es": {
       "groups": {

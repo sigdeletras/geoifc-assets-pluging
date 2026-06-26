@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from geoifcassets.core.models import ClassMetricSpec, PropertyTemplate
+from geoifcassets.core.models import PropertyTemplate
 from geoifcassets.core.template_loader import (
     group_order_key,
     load_template_from_dict,
@@ -18,10 +18,7 @@ _MINIMAL = {
     "description": "Test",
     "fields": [
         {"name": "file_name",    "enabled": True,  "group": "File",    "alias": "File name", "description": "IFC filename without path"},
-        {"name": "project_name", "enabled": False,  "group": "Project", "alias": "Project name"},
-    ],
-    "class_metrics": [
-        {"ifc_class": "IfcWall", "prefix": "wall", "metrics": ["count", "area"], "enabled": True},
+        {"name": "project_name", "enabled": False, "group": "Project", "alias": "Project name"},
     ],
 }
 
@@ -84,45 +81,12 @@ def test_field_group_and_alias_from_json():
     assert t.fields[0].alias == "My alias"
 
 
-def test_class_metrics_parsed():
-    t = load_template_from_dict(_MINIMAL)
-    assert len(t.class_metrics) == 1
-    spec = t.class_metrics[0]
-    assert isinstance(spec, ClassMetricSpec)
-    assert spec.ifc_class == "IfcWall"
-    assert spec.prefix == "wall"
-    assert "count" in spec.metrics
-    assert "area" in spec.metrics
-    assert spec.enabled is True
-
-
-def test_class_metrics_invalid_metric_filtered():
-    raw = {**_MINIMAL, "class_metrics": [
-        {"ifc_class": "IfcWall", "prefix": "wall", "metrics": ["count", "INVALID"], "enabled": True}
-    ]}
-    t = load_template_from_dict(raw)
-    assert "INVALID" not in t.class_metrics[0].metrics
-    assert "count" in t.class_metrics[0].metrics
-
-
-def test_class_metrics_prefix_defaults_to_class_lowercase():
-    raw = {**_MINIMAL, "class_metrics": [
-        {"ifc_class": "IfcDoor", "metrics": ["count"], "enabled": True}
-    ]}
-    t = load_template_from_dict(raw)
-    assert t.class_metrics[0].prefix == "door"
-
 
 def test_empty_fields_list():
     raw = {**_MINIMAL, "fields": []}
     t = load_template_from_dict(raw)
     assert t.fields == []
 
-
-def test_empty_class_metrics_list():
-    raw = {**_MINIMAL, "class_metrics": []}
-    t = load_template_from_dict(raw)
-    assert t.class_metrics == []
 
 
 def test_malformed_field_entry_skipped():
@@ -158,40 +122,94 @@ def test_ifc_core_catalog_loads():
     t = load_builtin_template("ifc_core_catalog")
     assert isinstance(t, PropertyTemplate)
     assert len(t.fields) > 0
-    assert len(t.class_metrics) > 0
 
 
-def test_ifc_core_catalog_loads_spanish():
-    """Loading with locale='es' must override alias and group_label from i18n file."""
-    from geoifcassets.core.template_loader import load_builtin_template  # noqa: PLC0415
-
-    t = load_builtin_template("ifc_core_catalog", locale="es")
+def test_locale_es_from_inline_i18n_block():
+    """locale='es' reads translations from the JSON's top-level i18n block."""
+    raw = {
+        **_MINIMAL,
+        "i18n": {
+            "es": {
+                "groups": {"File": "Archivo", "Project": "Proyecto"},
+                "fields": {
+                    "file_name": {"alias": "Nombre del archivo", "description": "Desc ES"},
+                },
+            }
+        },
+    }
+    t = load_template_from_dict(raw, locale="es")
     file_name = next(f for f in t.fields if f.name == "file_name")
     assert file_name.alias == "Nombre del archivo"
-    assert file_name.group_label == "Archivo"  # group "File" → "Archivo"
+    assert file_name.description == "Desc ES"
+    assert file_name.group_label == "Archivo"
 
 
-def test_ifc_core_catalog_group_label_spanish():
-    """All groups must receive a translated group_label when locale='es'."""
-    from geoifcassets.core.template_loader import load_builtin_template  # noqa: PLC0415
+def test_locale_group_label_applied_to_all_fields_in_group():
+    """Every field in a group gets the same translated group_label."""
+    raw = {
+        **_MINIMAL,
+        "fields": [
+            {"name": "file_name",    "enabled": True, "group": "File"},
+            {"name": "file_path",    "enabled": True, "group": "File"},
+            {"name": "project_name", "enabled": True, "group": "Project"},
+        ],
+        "i18n": {"es": {"groups": {"File": "Archivo"}, "fields": {}}},
+    }
+    t = load_template_from_dict(raw, locale="es")
+    file_fields = [f for f in t.fields if f.group == "File"]
+    assert all(f.group_label == "Archivo" for f in file_fields)
+    project_field = next(f for f in t.fields if f.group == "Project")
+    assert project_field.group_label == ""  # no translation for Project
 
-    t = load_builtin_template("ifc_core_catalog", locale="es")
-    geometry_fields = [f for f in t.fields if f.group == "Geometry"]
-    assert all(f.group_label == "Geometría" for f in geometry_fields)
 
-
-def test_locale_fallback_to_english_when_file_missing():
-    """Unknown locale must silently fall back to English values."""
-    from geoifcassets.core.template_loader import load_builtin_template  # noqa: PLC0415
-
-    t = load_builtin_template("ifc_core_catalog", locale="xx")
+def test_locale_unknown_falls_back_silently():
+    """Locale absent from i18n block returns English values, empty group_label."""
+    raw = {
+        **_MINIMAL,
+        "i18n": {"es": {"groups": {"File": "Archivo"}, "fields": {}}},
+    }
+    t = load_template_from_dict(raw, locale="xx")
     file_name = next(f for f in t.fields if f.name == "file_name")
     assert file_name.alias == "File name"
     assert file_name.group_label == ""
 
 
+def test_locale_en_skips_i18n_block():
+    """locale='en' never applies i18n overrides even when block exists."""
+    raw = {
+        **_MINIMAL,
+        "i18n": {"en": {"groups": {"File": "OVERRIDDEN"}, "fields": {
+            "file_name": {"alias": "OVERRIDDEN"},
+        }}},
+    }
+    t = load_template_from_dict(raw, locale="en")
+    file_name = next(f for f in t.fields if f.name == "file_name")
+    assert file_name.alias == "File name"
+    assert file_name.group_label == ""
+
+
+def test_ifc_core_catalog_loads_spanish():
+    """Bundled catalog: locale='es' resolves Spanish alias and group_label."""
+    from geoifcassets.core.template_loader import load_builtin_template  # noqa: PLC0415
+
+    t = load_builtin_template("ifc_core_catalog", locale="es")
+    file_name = next(f for f in t.fields if f.name == "file_name")
+    assert file_name.alias == "Nombre del archivo"
+    assert file_name.group_label == "Archivo"
+
+
+def test_ifc_core_catalog_group_label_geometry_spanish():
+    """Bundled catalog: all Geometry fields get translated group_label."""
+    from geoifcassets.core.template_loader import load_builtin_template  # noqa: PLC0415
+
+    t = load_builtin_template("ifc_core_catalog", locale="es")
+    geometry_fields = [f for f in t.fields if f.group == "Geometry"]
+    assert geometry_fields, "no Geometry fields found"
+    assert all(f.group_label == "Geometria" for f in geometry_fields)
+
+
 def test_locale_en_no_i18n_lookup():
-    """locale='en' must return base English values and empty group_label."""
+    """locale='en' on bundled catalog returns English values, empty group_label."""
     from geoifcassets.core.template_loader import load_builtin_template  # noqa: PLC0415
 
     t = load_builtin_template("ifc_core_catalog", locale="en")

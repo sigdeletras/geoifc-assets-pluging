@@ -43,6 +43,7 @@ class GeoIfcAssetsPlugin:
         self._selected_feature: Any | None = None
         self._active_storey: dict | None = None
         self._last_extracted_ifc: str | None = None
+        self._last_discoveries: list = []
         self._current_template: Any | None = None
         self._last_extracted_fields: dict[str, Any] = {}
 
@@ -490,7 +491,7 @@ class GeoIfcAssetsPlugin:
             return
         from geoifcassets.adapters.ifc.class_extractor import discover_ifc_classes  # noqa: PLC0415
 
-        classes = discover_ifc_classes(ifc_path)
+        self._last_discoveries = discover_ifc_classes(ifc_path)
         classes_info = [
             {
                 "ifc_class": c.ifc_class,
@@ -499,10 +500,12 @@ class GeoIfcAssetsPlugin:
                 "values": c.values,
                 "sources": c.sources,
             }
-            for c in classes
+            for c in self._last_discoveries
         ]
         self._dock.set_ifc_classes(classes_info)
-        self._logger.info("IFC classes discovered", classes=len(classes), ifc_path=ifc_path)
+        self._logger.info(
+            "IFC classes discovered", classes=len(self._last_discoveries), ifc_path=ifc_path
+        )
 
     def _qgis_locale(self) -> str:
         """Return the two-letter QGIS UI language code (e.g. 'es'). Falls back to 'en'."""
@@ -621,25 +624,12 @@ class GeoIfcAssetsPlugin:
             and self._last_extracted_fields[name] is not None
         }
 
-        # Also include class metrics from the IFC Classes section
-        # (class_pairs already computed above)
-        if class_pairs and self._last_extracted_ifc:
-            from geoifcassets.adapters.ifc.class_extractor import extract_class_metrics  # noqa: PLC0415
-            from geoifcassets.core.models import ClassMetricSpec  # noqa: PLC0415
+        # Include class metrics from pre-computed discovery results (no re-read of IFC)
+        if class_pairs and self._last_discoveries:
+            from geoifcassets.adapters.ifc.class_extractor import discoveries_to_fields  # noqa: PLC0415
 
-            specs = [
-                ClassMetricSpec(
-                    ifc_class=ifc_class,
-                    prefix=ifc_class[3:].lower() if ifc_class.startswith("Ifc") else ifc_class.lower(),
-                    metrics=metrics,
-                    enabled=True,
-                )
-                for ifc_class, metrics in class_pairs
-            ]
-            class_values = extract_class_metrics(self._last_extracted_ifc, specs)
-            for k, v in class_values.items():
-                if v is not None:
-                    values_to_write[k] = v
+            class_values = discoveries_to_fields(self._last_discoveries, class_pairs)
+            values_to_write.update(class_values)
 
         if not values_to_write:
             self._messages.warning(

@@ -15,7 +15,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from geoifcassets.core.models import ClassMetricSpec, PropertyTemplate, TemplateField
+from geoifcassets.core.models import PropertyTemplate, TemplateField
 
 _log = logging.getLogger("geoifcassets")
 
@@ -83,23 +83,16 @@ def group_order_key(group: str) -> int:
 # ── Internal ─────────────────────────────────────────────────────────────────
 
 
-def _load_i18n(template_stem: str, locale: str) -> tuple[dict, dict]:
-    """Load field and group translations from the external i18n file.
+def _load_i18n(raw: dict[str, Any], locale: str) -> tuple[dict, dict]:
+    """Extract field and group translations from the template dict's ``i18n`` block.
 
-    Returns ``(fields_dict, groups_dict)`` — both empty when not found.
+    Returns ``(fields_dict, groups_dict)`` — both empty when the locale is absent.
     ``fields_dict`` is keyed by field name; ``groups_dict`` by English group key.
     """
-    if not template_stem or not locale or locale == "en":
+    if not locale or locale == "en":
         return {}, {}
-    i18n_path = BUILTIN_TEMPLATES_DIR / "i18n" / f"{template_stem}_{locale}.json"
-    if not i18n_path.exists():
-        return {}, {}
-    try:
-        raw = json.loads(i18n_path.read_text(encoding="utf-8"))
-        return raw.get("fields", {}), raw.get("groups", {})
-    except (OSError, json.JSONDecodeError) as exc:
-        _log.warning("template_loader: cannot load i18n file %s: %s", i18n_path, exc)
-        return {}, {}
+    loc = raw.get("i18n", {}).get(locale, {})
+    return loc.get("fields", {}), loc.get("groups", {})
 
 
 def _parse_template(
@@ -111,16 +104,14 @@ def _parse_template(
     if not isinstance(raw, dict):
         raise ValueError(f"Template {source}: expected a JSON object at root")
 
-    i18n_fields, i18n_groups = _load_i18n(template_stem, locale)
+    i18n_fields, i18n_groups = _load_i18n(raw, locale)
     fields = _parse_fields(raw.get("fields", []), source, i18n_fields, i18n_groups)
-    class_metrics = _parse_class_metrics(raw.get("class_metrics", []), source)
 
     return PropertyTemplate(
         template_name=str(raw.get("template_name", source)),
         extractor_version=str(raw.get("extractor_version", "1.0.0")),
         description=str(raw.get("description", "")),
         fields=fields,
-        class_metrics=class_metrics,
     )
 
 
@@ -163,26 +154,3 @@ def _parse_fields(
     return result
 
 
-def _parse_class_metrics(raw_classes: Any, source: str) -> list[ClassMetricSpec]:
-    if not isinstance(raw_classes, list):
-        _log.warning("template_loader: %s — 'class_metrics' is not a list, ignored", source)
-        return []
-
-    valid_metrics = {"count", "length", "area", "volume"}
-    result: list[ClassMetricSpec] = []
-    for entry in raw_classes:
-        if not isinstance(entry, dict) or "ifc_class" not in entry:
-            _log.debug("template_loader: skipping malformed class_metrics entry: %s", entry)
-            continue
-        ifc_class = str(entry["ifc_class"])
-        prefix = str(entry.get("prefix", ifc_class.lstrip("Ifc").lower()))
-        raw_metrics = entry.get("metrics", ["count"])
-        metrics = [m for m in raw_metrics if m in valid_metrics]
-        enabled = bool(entry.get("enabled", True))
-        result.append(ClassMetricSpec(
-            ifc_class=ifc_class,
-            prefix=prefix,
-            metrics=metrics,
-            enabled=enabled,
-        ))
-    return result

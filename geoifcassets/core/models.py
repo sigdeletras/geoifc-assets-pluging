@@ -86,16 +86,6 @@ class TemplateField:
 
 
 @dataclass
-class ClassMetricSpec:
-    """Which metrics to extract for one IFC class."""
-
-    ifc_class: str
-    prefix: str
-    metrics: list[str]   # subset of: "count", "length", "area", "volume"
-    enabled: bool
-
-
-@dataclass
 class PropertyTemplate:
     """A fully loaded and enriched property extraction template."""
 
@@ -103,7 +93,6 @@ class PropertyTemplate:
     extractor_version: str
     description: str
     fields: list[TemplateField]
-    class_metrics: list[ClassMetricSpec]
 
 
 @dataclass
