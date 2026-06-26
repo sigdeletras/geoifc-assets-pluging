@@ -11,8 +11,9 @@ from geoifcassets.core.models import ModelMetric, PropertyTemplate
 from geoifcassets.core.template_loader import group_order_key
 
 # Qt UserRole constants for tree items
-_FIELD_NAME_ROLE = 256   # stores IFC field name on Extract tree items
-_CLASS_ROLE = 257        # stores IFC class name on Classes tree items
+_FIELD_NAME_ROLE = 256      # stores IFC field name on Extract tree items
+_CLASS_ROLE = 257            # stores IFC class name on Classes tree items
+_GROUP_SECTION_ROLE = 258    # "core", "custom", or "separator" on group-level Extract tree items
 _METRIC_COLS = ("count", "length", "area", "volume")
 
 
@@ -210,18 +211,23 @@ class GeoIfcAssetsDock:
         extract_layout.setContentsMargins(4, 4, 4, 4)
         extract_layout.setSpacing(4)
 
-        # Template selector row
+        # Template selector row — core template is fixed; label replaces combo
         template_bar = QWidget()
         template_bar_layout = QHBoxLayout(template_bar)
         template_bar_layout.setContentsMargins(0, 0, 0, 0)
-        self._template_combo = QComboBox()
-        self._template_combo.setToolTip(tr("GeoIfcAssets", "Active extraction template"))
-        self._load_json_btn = QPushButton(tr("GeoIfcAssets", "Load JSON…"))
-        self._load_json_btn.setToolTip(tr("GeoIfcAssets", "Load a custom template from a JSON file"))
+        self._template_label = QLabel(tr("GeoIfcAssets", "IFC Core Catalog"))
+        self._template_label.setToolTip(
+            tr("GeoIfcAssets", "Built-in extraction template — cannot be changed")
+        )
+        self._template_label.setStyleSheet("font-style: italic; color: gray;")
+        self._load_json_btn = QPushButton(tr("GeoIfcAssets", "Load custom template…"))
+        self._load_json_btn.setToolTip(
+            tr("GeoIfcAssets", "Load a custom template JSON to add extra fields alongside the core")
+        )
         if on_load_json_template is not None:
             self._load_json_btn.clicked.connect(on_load_json_template)
-        template_bar_layout.addWidget(self._template_combo, 1)
-        template_bar_layout.addWidget(self._load_json_btn)
+        # Button hidden in v1 — custom templates not exposed yet; re-add to layout to enable
+        template_bar_layout.addWidget(self._template_label, 1)
         extract_layout.addWidget(template_bar)
 
         # Action row — Select all / Clear / Expand all agrupdos; Load to GIS a la derecha
@@ -416,17 +422,23 @@ class GeoIfcAssetsDock:
     # ── Extract tab public API ────────────────────────────────────────────────
 
     def set_template(self, template: PropertyTemplate, builtin_names: list[str]) -> None:
-        """Populate the template combo and rebuild the fields tree."""
+        """Backward-compat shim — delegates to set_core_template."""
+        self.set_core_template(template)
+
+    def set_core_template(self, template: PropertyTemplate) -> None:
+        """Rebuild the fields tree with core template fields."""
         self._extract_template = template
-
-        self._template_combo.blockSignals(True)
-        self._template_combo.clear()
-        for name in builtin_names:
-            self._template_combo.addItem(name)
-        self._template_combo.blockSignals(False)
-
         self._rebuild_fields_tree(template)
         self._load_gis_btn.setEnabled(False)
+
+    def set_custom_template(self, template: PropertyTemplate | None) -> None:
+        """Add or remove a custom template section below the core fields.
+
+        Passing None clears any previously loaded custom section.
+        """
+        self._clear_custom_section()
+        if template is not None:
+            self._append_custom_section(template)
 
     def set_extract_values(self, values: dict[str, Any]) -> None:
         """Update the Value column in the fields tree from extracted data."""
@@ -469,31 +481,78 @@ class GeoIfcAssetsDock:
         self._extract_status.setText(message)
 
     def set_template_combo_names(self, names: list[str]) -> None:
-        self._template_combo.blockSignals(True)
-        self._template_combo.clear()
-        for name in names:
-            self._template_combo.addItem(name)
-        self._template_combo.blockSignals(False)
+        """No-op — template selector combo replaced by static label."""
 
     # ── Extract tree internals ────────────────────────────────────────────────
 
     def _rebuild_fields_tree(self, template: PropertyTemplate) -> None:
+        self._fields_tree.blockSignals(True)
+        self._fields_tree.clear()
+        self._add_fields_to_tree(template, "core")
+        self._fields_tree.blockSignals(False)
+        self._sync_group_check_states()
+
+    def _clear_custom_section(self) -> None:
+        """Remove all top-level tree items tagged as custom or separator."""
+        root = self._fields_tree.invisibleRootItem()
+        to_remove = [
+            root.child(i)
+            for i in range(root.childCount())
+            if root.child(i).data(0, _GROUP_SECTION_ROLE) in ("custom", "separator")
+        ]
+        self._fields_tree.blockSignals(True)
+        for item in to_remove:
+            root.removeChild(item)
+        self._fields_tree.blockSignals(False)
+
+    def _append_custom_section(self, template: PropertyTemplate) -> None:
+        """Append a separator item + custom template groups to the fields tree."""
         from qgis.PyQt.QtCore import Qt  # noqa: PLC0415
+        from qgis.PyQt.QtGui import QFont  # noqa: PLC0415
         from qgis.PyQt.QtWidgets import QTreeWidgetItem  # noqa: PLC0415
 
         self._fields_tree.blockSignals(True)
-        self._fields_tree.clear()
 
-        # Group fields preserving JSON order within each group
+        sep_text = tr("GeoIfcAssets", "── Custom: {name} ──").format(name=template.template_name)
+        sep_item = QTreeWidgetItem([sep_text, "", "", ""])
+        sep_item.setData(0, _GROUP_SECTION_ROLE, "separator")
+        try:
+            sep_item.setFlags(
+                sep_item.flags() & ~Qt.ItemIsSelectable & ~Qt.ItemIsUserCheckable
+            )
+        except AttributeError:
+            sep_item.setFlags(
+                sep_item.flags()
+                & ~Qt.ItemFlag.ItemIsSelectable
+                & ~Qt.ItemFlag.ItemIsUserCheckable
+            )
+        try:
+            font = QFont()
+            font.setItalic(True)
+            for col in range(4):
+                sep_item.setFont(col, font)
+        except Exception:  # noqa: BLE001
+            pass
+        self._fields_tree.addTopLevelItem(sep_item)
+
+        self._add_fields_to_tree(template, "custom")
+        self._fields_tree.blockSignals(False)
+        self._sync_group_check_states()
+
+    def _add_fields_to_tree(self, template: PropertyTemplate, section: str) -> None:
+        """Add all groups from template to the tree, tagging items with section."""
+        from qgis.PyQt.QtCore import Qt  # noqa: PLC0415
+        from qgis.PyQt.QtWidgets import QTreeWidgetItem  # noqa: PLC0415
+
         groups: dict[str, list] = {}
         for field in template.fields:
             groups.setdefault(field.group, []).append(field)
 
-        # Sort groups by canonical order
         for group_name in sorted(groups.keys(), key=group_order_key):
             fields_in_group = groups[group_name]
             group_display = fields_in_group[0].group_label or group_name
             group_item = QTreeWidgetItem([group_display, "", "", ""])
+            group_item.setData(0, _GROUP_SECTION_ROLE, section)
             try:
                 group_item.setFlags(
                     group_item.flags()
@@ -519,14 +578,14 @@ class GeoIfcAssetsDock:
                     child.setCheckState(0, state)
                 except AttributeError:
                     child.setFlags(child.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                    state = Qt.CheckState.Checked if field.enabled else Qt.CheckState.Unchecked
+                    state = (
+                        Qt.CheckState.Checked if field.enabled else Qt.CheckState.Unchecked
+                    )
                     child.setCheckState(0, state)
                 group_item.addChild(child)
 
             self._fields_tree.addTopLevelItem(group_item)
             group_item.setExpanded(False)
-
-        self._fields_tree.blockSignals(False)
         self._sync_group_check_states()
 
     def _on_tree_item_changed(self, item: Any, column: int) -> None:
@@ -535,8 +594,8 @@ class GeoIfcAssetsDock:
         from qgis.PyQt.QtCore import Qt  # noqa: PLC0415
 
         self._fields_tree.blockSignals(True)
-        # If a group item toggled, push state to all children
-        if item.parent() is None:
+        # If a group item toggled, push state to all children (skip separator — no children)
+        if item.parent() is None and item.childCount() > 0:
             try:
                 state = item.checkState(0)
                 child_state = (
@@ -706,6 +765,8 @@ class GeoIfcAssetsDock:
         root = self._fields_tree.invisibleRootItem()
         for g_idx in range(root.childCount()):
             group_item = root.child(g_idx)
+            if group_item.childCount() == 0:
+                continue  # separator item — always visible, not filtered
             any_visible = False
             for f_idx in range(group_item.childCount()):
                 field_item = group_item.child(f_idx)

@@ -136,6 +136,7 @@ def _parse_fields(
         alias = str(entry.get("alias", name))
         description = str(entry.get("description", ""))
         ifc_source = str(entry.get("ifc_source") or "")
+        aggregate = str(entry.get("aggregate", "count"))
 
         # Apply locale overrides from external i18n dicts
         loc_field = i18n_fields.get(name, {})
@@ -151,6 +152,7 @@ def _parse_fields(
             alias=alias,
             description=description,
             ifc_source=ifc_source,
+            aggregate=aggregate,
             group_label=group_label,
         ))
     return result

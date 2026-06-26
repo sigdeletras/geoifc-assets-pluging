@@ -1266,3 +1266,59 @@ Todas las herramientas deben ser temporales y visuales (no transfieren datos a G
 | `webviewer_src/index.html` | `#measure-toolbar` ampliado (✂ Section); nuevos `#view-preset-bar`, `#section-controls` |
 | `webviewer_src/src/viewer.ts` | Estado: `MeasureMode`, `VIEW_PRESETS`, `orthoCamera`, `useOrtho`, `renderCamera`, `cameraAnimTarget`, `sectionPlane`. Funciones: `handleMeasureClick`, `finalizeLengthMeasurement`, `finalizeAreaMeasurement`, `updateSectionPlane`, `enableSection`, `disableSection`, `snapToView`, `setOrthoMode` |
 | `webviewer_src/src/viewer.css` | Estilos `.measure-toolbar`, `.measure-btn`, `.measure-label`, `.section-controls`, `.view-preset-bar`, `.view-preset-btn` |
+
+
+---
+
+# ADR-012: Funcionalidades desactivadas en v1 — Plantilla personalizada y transferencia BIM→GIS
+
+## Estado
+
+Decidido (2026-06-26)
+
+## Contexto
+
+Durante el desarrollo de la v1 del complemento GeoIFC Assets se tomó la decisión de simplificar el alcance de la primera versión pública. Dos funcionalidades estaban técnicamente implementadas pero se decidió no exponerlas en la interfaz hasta validar el flujo principal.
+
+---
+
+## Funcionalidades desactivadas
+
+### 1. Carga de plantilla personalizada (custom template JSON)
+
+**Descripción:** Botón "Load custom template…" en la pestaña Extract que permitía al usuario cargar un JSON propio para añadir campos de extracción IFC dinámicos (PropertySets, QuantitySets) como sección adicional bajo los campos del catálogo core.
+
+**Motivo de desactivación:** En v1 no hay suficiente documentación ni UX para guiar al usuario en la creación de plantillas válidas. Se evita confusión y soporte prematuro.
+
+**Cómo reactivar:**
+- En `geoifcassets/adapters/qgis/dock.py`, función `__init__`, añadir de nuevo el botón al layout:
+  ```python
+  template_bar_layout.addWidget(self._load_json_btn)
+  ```
+- Todo el código de soporte está activo: `set_custom_template`, `_append_custom_section`, `extract_custom_fields`, plantillas de ejemplo en `geoifcassets/templates/examples/`.
+
+---
+
+### 2. Botón "→" de transferencia por propiedad en el panel del visor web
+
+**Descripción:** En el panel de propiedades del visor IFC 3D, junto al valor de cada propiedad aparecía un botón `→` con tooltip _"Transfer to GIS field"_. Al pulsarlo se abría el diálogo BIM→GIS (`_show_transfer_dialog` en plugin.py) que permite mapear ese valor a un campo de una capa GIS activa.
+
+El diálogo BIM→GIS en sí **se mantiene activo** y puede seguir lanzándose desde otros puntos de entrada (métricas, eventos futuros). Lo que se elimina es únicamente el botón en el panel del visor.
+
+**Motivo de desactivación:** El botón por propiedad genera ruido en el panel durante la exploración IFC y requiere que el usuario tenga una capa GIS activa con el campo correcto. Se reserva para v2 junto con un flujo de mapeo más guiado.
+
+**Cómo reactivar:**
+- En `webviewer_src/src/viewer.ts`, función `propRow`, renombrar `_pset` → `pset` y descomentar la línea del botón dentro del template literal:
+  ```typescript
+  // restore: `<button class="prop-transfer" data-pset="${escHtml(_pset)}" ...>→</button>` +
+  ```
+- El click handler en `renderProps` (`.prop-transfer`) ya está en el código y no requiere cambios.
+
+---
+
+## Consecuencias
+
+- El panel del visor IFC muestra propiedades sin botones de acción → interfaz más limpia.
+- El botón "→ Load to GIS" de la pestaña Extract **permanece activo** — permite escribir campos extraídos en una entidad GIS seleccionada.
+- El diálogo BIM→GIS (`_show_transfer_dialog`) permanece funcional para uso interno y futuras integraciones.
+- Los tests unitarios y la arquitectura interna están intactos; la reactivación del botón del visor es quirúrgica (ver sección 2).

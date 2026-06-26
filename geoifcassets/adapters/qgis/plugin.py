@@ -44,7 +44,8 @@ class GeoIfcAssetsPlugin:
         self._active_storey: dict | None = None
         self._last_extracted_ifc: str | None = None
         self._last_discoveries: list = []
-        self._current_template: Any | None = None
+        self._core_template: Any | None = None
+        self._custom_template: Any | None = None
         self._last_extracted_fields: dict[str, Any] = {}
 
     def initGui(self) -> None:  # noqa: N802
@@ -469,18 +470,26 @@ class GeoIfcAssetsPlugin:
         self._discover_and_show_ifc_classes(ifc_path)
 
     def _extract_and_show_fields(self, ifc_path: str) -> None:
-        """Extract template fields from the IFC and populate the Extract tab preview."""
-        if self._dock is None or self._current_template is None:
+        """Extract core + custom template fields from the IFC and populate the Extract tab."""
+        if self._dock is None or self._core_template is None:
             return
+        from geoifcassets.adapters.ifc.custom_field_extractor import (  # noqa: PLC0415
+            extract_custom_fields,
+        )
         from geoifcassets.adapters.ifc.ifc_field_extractor import extract_fields  # noqa: PLC0415
 
-        enabled_fields = [f.name for f in self._current_template.fields if f.enabled or True]
-        values = extract_fields(ifc_path, enabled_fields)
+        core_names = [f.name for f in self._core_template.fields]
+        values = extract_fields(ifc_path, core_names)
+
+        if self._custom_template is not None:
+            values.update(extract_custom_fields(ifc_path, self._custom_template.fields))
+
         self._last_extracted_fields = values
         self._dock.set_extract_values(values)
         self._logger.info(
             "Extract tab values populated",
-            fields=len(values),
+            core_fields=len(core_names),
+            custom_fields=len(self._custom_template.fields) if self._custom_template else 0,
             non_null=sum(1 for v in values.values() if v is not None),
             ifc_path=ifc_path,
         )
@@ -517,40 +526,29 @@ class GeoIfcAssetsPlugin:
             return "en"
 
     def _load_default_template(self) -> None:
-        """Load the built-in ifc_core_catalog template and set it on the dock."""
-        from geoifcassets.core.template_loader import (  # noqa: PLC0415
-            list_builtin_templates,
-            load_builtin_template,
-        )
-
-        builtin_names = list_builtin_templates()
-        if not builtin_names:
-            self._logger.warning("No built-in templates found in geoifcassets/templates/")
-            return
+        """Load ifc_core_catalog as the fixed core template and set it on the dock."""
+        from geoifcassets.core.template_loader import load_builtin_template  # noqa: PLC0415
 
         try:
-            template = load_builtin_template(builtin_names[0], locale=self._qgis_locale())
+            template = load_builtin_template("ifc_core_catalog", locale=self._qgis_locale())
         except (ValueError, FileNotFoundError) as exc:
-            self._logger.warning("Could not load default template", error=str(exc))
+            self._logger.warning("Could not load core template", error=str(exc))
             return
 
-        self._current_template = template
+        self._core_template = template
         if self._dock is not None:
-            self._dock.set_template(template, builtin_names)
-        self._logger.info("Default template loaded", template=template.template_name)
+            self._dock.set_core_template(template)
+        self._logger.info("Core template loaded", template=template.template_name)
 
     def _load_json_template_file(self) -> None:
-        """Open a file dialog and load a user-supplied template JSON."""
-        from qgis.PyQt.QtWidgets import QFileDialog  # noqa: PLC0415
+        """Open a file dialog and load a custom template JSON to add alongside core fields."""
+        from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox  # noqa: PLC0415
 
-        from geoifcassets.core.template_loader import (  # noqa: PLC0415
-            list_builtin_templates,
-            load_template_from_path,
-        )
+        from geoifcassets.core.template_loader import load_template_from_path  # noqa: PLC0415
 
         path, _ = QFileDialog.getOpenFileName(
             None,
-            tr("GeoIfcAssets", "Load extraction template"),
+            tr("GeoIfcAssets", "Load custom extraction template"),
             "",
             tr("GeoIfcAssets", "JSON files (*.json);;All files (*)"),
         )
@@ -565,19 +563,35 @@ class GeoIfcAssetsPlugin:
             )
             return
 
-        self._current_template = template
-        builtin_names = list_builtin_templates()
-        display_names = builtin_names + [Path(path).stem]
+        # Conflict detection: warn if any custom field name duplicates a core field name
+        if self._core_template is not None:
+            core_names = {f.name for f in self._core_template.fields}
+            conflicts = [f.name for f in template.fields if f.name in core_names]
+            if conflicts:
+                msg = tr(
+                    "GeoIfcAssets",
+                    "Custom template has {n} field name(s) that conflict with core fields: {names}. "
+                    "These fields will be skipped.",
+                ).format(n=len(conflicts), names=", ".join(conflicts[:5]))
+                QMessageBox.warning(None, tr("GeoIfcAssets", "Field name conflict"), msg)
+                self._logger.warning(
+                    "Custom template has conflicting field names",
+                    conflicts=conflicts,
+                )
+
+        self._custom_template = template
         if self._dock is not None:
-            self._dock.set_template(template, display_names)
+            self._dock.set_custom_template(template)
             self._dock.add_user_log(
-                tr("GeoIfcAssets", "Template loaded: {name}").format(name=template.template_name)
+                tr("GeoIfcAssets", "Custom template loaded: {name}").format(
+                    name=template.template_name
+                )
             )
 
         if self._last_extracted_ifc:
             self._extract_and_show_fields(self._last_extracted_ifc)
 
-        self._logger.info("User template loaded", path=path, template=template.template_name)
+        self._logger.info("Custom template loaded", path=path, template=template.template_name)
 
     def _handle_load_to_gis(self) -> None:
         """Write selected Extract tab fields to the active GIS feature."""

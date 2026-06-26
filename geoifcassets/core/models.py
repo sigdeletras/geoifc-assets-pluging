@@ -83,6 +83,7 @@ class TemplateField:
     alias: str = ""
     description: str = ""
     ifc_source: str = ""
+    aggregate: str = "count"   # "count" | "first" | "all" — strategy for custom fields
     group_label: str = ""  # localized display name; falls back to group when empty
 
 

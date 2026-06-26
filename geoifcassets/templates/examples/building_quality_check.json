@@ -1,0 +1,50 @@
+{
+  "template_name": "building_quality_check_v1",
+  "extractor_version": "1.0.0",
+  "description": "Building domain — counts of elements with standard BIM PropertySets and QuantitySets populated.",
+  "fields": [
+    {"name": "wall_is_external",      "enabled": true, "group": "Walls",    "alias": "Walls with IsExternal",        "ifc_source": "IfcWall:Pset_WallCommon.IsExternal",                     "aggregate": "count", "description": "Number of IfcWall with IsExternal set in Pset_WallCommon"},
+    {"name": "wall_fire_rating",      "enabled": true, "group": "Walls",    "alias": "Walls with FireRating",        "ifc_source": "IfcWall:Pset_WallCommon.FireRating",                     "aggregate": "count", "description": "Number of IfcWall with FireRating set in Pset_WallCommon"},
+    {"name": "wall_load_bearing",     "enabled": true, "group": "Walls",    "alias": "Walls LoadBearing",            "ifc_source": "IfcWall:Pset_WallCommon.LoadBearing",                    "aggregate": "count", "description": "Number of IfcWall with LoadBearing set in Pset_WallCommon"},
+    {"name": "wall_area_qto",         "enabled": true, "group": "Walls",    "alias": "Walls with area (QTO)",        "ifc_source": "IfcWall:Qto_WallBaseQuantities.GrossArea",               "aggregate": "count", "description": "Number of IfcWall with GrossArea in Qto_WallBaseQuantities"},
+    {"name": "slab_fire_rating",      "enabled": true, "group": "Slabs",    "alias": "Slabs with FireRating",        "ifc_source": "IfcSlab:Pset_SlabCommon.FireRating",                     "aggregate": "count", "description": "Number of IfcSlab with FireRating set in Pset_SlabCommon"},
+    {"name": "slab_area_qto",         "enabled": true, "group": "Slabs",    "alias": "Slabs with area (QTO)",        "ifc_source": "IfcSlab:Qto_SlabBaseQuantities.GrossArea",               "aggregate": "count", "description": "Number of IfcSlab with GrossArea in Qto_SlabBaseQuantities"},
+    {"name": "beam_length_qto",       "enabled": true, "group": "Structure","alias": "Beams with length (QTO)",      "ifc_source": "IfcBeam:Qto_BeamBaseQuantities.Length",                  "aggregate": "count", "description": "Number of IfcBeam with Length in Qto_BeamBaseQuantities"},
+    {"name": "column_height_qto",     "enabled": true, "group": "Structure","alias": "Columns with height (QTO)",    "ifc_source": "IfcColumn:Qto_ColumnBaseQuantities.Length",              "aggregate": "count", "description": "Number of IfcColumn with Length in Qto_ColumnBaseQuantities"},
+    {"name": "door_fire_rating",      "enabled": true, "group": "Openings", "alias": "Doors with FireRating",        "ifc_source": "IfcDoor:Pset_DoorCommon.FireRating",                     "aggregate": "count", "description": "Number of IfcDoor with FireRating set in Pset_DoorCommon"},
+    {"name": "door_area_qto",         "enabled": true, "group": "Openings", "alias": "Doors with area (QTO)",        "ifc_source": "IfcDoor:Qto_DoorBaseQuantities.Area",                    "aggregate": "count", "description": "Number of IfcDoor with Area in Qto_DoorBaseQuantities"},
+    {"name": "window_u_value",        "enabled": true, "group": "Openings", "alias": "Windows with U-value",         "ifc_source": "IfcWindow:Pset_WindowCommon.ThermalTransmittance",       "aggregate": "count", "description": "Number of IfcWindow with ThermalTransmittance in Pset_WindowCommon"},
+    {"name": "window_area_qto",       "enabled": true, "group": "Openings", "alias": "Windows with area (QTO)",      "ifc_source": "IfcWindow:Qto_WindowBaseQuantities.Area",                "aggregate": "count", "description": "Number of IfcWindow with Area in Qto_WindowBaseQuantities"},
+    {"name": "space_occupancy",       "enabled": true, "group": "Spaces",   "alias": "Spaces with OccupancyType",    "ifc_source": "IfcSpace:Pset_SpaceCommon.OccupancyType",                "aggregate": "count", "description": "Number of IfcSpace with OccupancyType in Pset_SpaceCommon"},
+    {"name": "space_gross_area_qto",  "enabled": true, "group": "Spaces",   "alias": "Spaces with gross area (QTO)", "ifc_source": "IfcSpace:Qto_SpaceBaseQuantities.GrossFloorArea",        "aggregate": "count", "description": "Number of IfcSpace with GrossFloorArea in Qto_SpaceBaseQuantities"},
+    {"name": "space_net_area_qto",    "enabled": true, "group": "Spaces",   "alias": "Spaces with net area (QTO)",   "ifc_source": "IfcSpace:Qto_SpaceBaseQuantities.NetFloorArea",          "aggregate": "count", "description": "Number of IfcSpace with NetFloorArea in Qto_SpaceBaseQuantities"}
+  ],
+  "i18n": {
+    "es": {
+      "groups": {
+        "Walls":     "Muros",
+        "Slabs":     "Forjados",
+        "Structure": "Estructura",
+        "Openings":  "Huecos",
+        "Spaces":    "Espacios"
+      },
+      "fields": {
+        "wall_is_external":     {"alias": "Muros con IsExternal",              "description": "Numero de IfcWall con IsExternal en Pset_WallCommon"},
+        "wall_fire_rating":     {"alias": "Muros con resistencia al fuego",    "description": "Numero de IfcWall con FireRating en Pset_WallCommon"},
+        "wall_load_bearing":    {"alias": "Muros portantes",                   "description": "Numero de IfcWall con LoadBearing en Pset_WallCommon"},
+        "wall_area_qto":        {"alias": "Muros con area (QTO)",              "description": "Numero de IfcWall con GrossArea en Qto_WallBaseQuantities"},
+        "slab_fire_rating":     {"alias": "Forjados con resistencia al fuego", "description": "Numero de IfcSlab con FireRating en Pset_SlabCommon"},
+        "slab_area_qto":        {"alias": "Forjados con area (QTO)",           "description": "Numero de IfcSlab con GrossArea en Qto_SlabBaseQuantities"},
+        "beam_length_qto":      {"alias": "Vigas con longitud (QTO)",          "description": "Numero de IfcBeam con Length en Qto_BeamBaseQuantities"},
+        "column_height_qto":    {"alias": "Pilares con altura (QTO)",          "description": "Numero de IfcColumn con Length en Qto_ColumnBaseQuantities"},
+        "door_fire_rating":     {"alias": "Puertas con resistencia al fuego",  "description": "Numero de IfcDoor con FireRating en Pset_DoorCommon"},
+        "door_area_qto":        {"alias": "Puertas con area (QTO)",            "description": "Numero de IfcDoor con Area en Qto_DoorBaseQuantities"},
+        "window_u_value":       {"alias": "Ventanas con transmitancia U",      "description": "Numero de IfcWindow con ThermalTransmittance en Pset_WindowCommon"},
+        "window_area_qto":      {"alias": "Ventanas con area (QTO)",           "description": "Numero de IfcWindow con Area en Qto_WindowBaseQuantities"},
+        "space_occupancy":      {"alias": "Espacios con tipo de uso",          "description": "Numero de IfcSpace con OccupancyType en Pset_SpaceCommon"},
+        "space_gross_area_qto": {"alias": "Espacios con area bruta (QTO)",     "description": "Numero de IfcSpace con GrossFloorArea en Qto_SpaceBaseQuantities"},
+        "space_net_area_qto":   {"alias": "Espacios con area neta (QTO)",      "description": "Numero de IfcSpace con NetFloorArea en Qto_SpaceBaseQuantities"}
+      }
+    }
+  }
+}

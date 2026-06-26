@@ -1,0 +1,50 @@
+{
+  "template_name": "infrastructure_civil_v1",
+  "extractor_version": "1.0.0",
+  "description": "Infrastructure / civil domain (IFC 4.3) — counts of elements with standard PropertySets and QuantitySets populated.",
+  "fields": [
+    {"name": "road_design_method",    "enabled": true, "group": "Roads",      "alias": "Roads with design method",      "ifc_source": "IfcRoad:Pset_RoadCommon.StructuralDesignMethod",            "aggregate": "count", "description": "Number of IfcRoad with StructuralDesignMethod in Pset_RoadCommon"},
+    {"name": "road_surface_type",     "enabled": true, "group": "Roads",      "alias": "Roads with surface type",       "ifc_source": "IfcRoad:Pset_RoadCommon.RoadSurface",                       "aggregate": "count", "description": "Number of IfcRoad with RoadSurface in Pset_RoadCommon"},
+    {"name": "road_length_qto",       "enabled": true, "group": "Roads",      "alias": "Roads with length (QTO)",       "ifc_source": "IfcRoad:Qto_RoadBaseQuantities.Length",                     "aggregate": "count", "description": "Number of IfcRoad with Length in Qto_RoadBaseQuantities"},
+    {"name": "road_area_qto",         "enabled": true, "group": "Roads",      "alias": "Roads with area (QTO)",         "ifc_source": "IfcRoad:Qto_RoadBaseQuantities.GrossArea",                  "aggregate": "count", "description": "Number of IfcRoad with GrossArea in Qto_RoadBaseQuantities"},
+    {"name": "pavement_thickness",    "enabled": true, "group": "Roads",      "alias": "Pavements with thickness",      "ifc_source": "IfcPavement:Pset_PavementCommon.NominalThickness",          "aggregate": "count", "description": "Number of IfcPavement with NominalThickness in Pset_PavementCommon"},
+    {"name": "bridge_structural_type","enabled": true, "group": "Bridges",    "alias": "Bridges with structural type",  "ifc_source": "IfcBridge:Pset_BridgeCommon.StructuralType",                "aggregate": "count", "description": "Number of IfcBridge with StructuralType in Pset_BridgeCommon"},
+    {"name": "bridge_span_qto",       "enabled": true, "group": "Bridges",    "alias": "Bridges with span (QTO)",       "ifc_source": "IfcBridge:Qto_BridgeBaseQuantities.Length",                 "aggregate": "count", "description": "Number of IfcBridge with Length in Qto_BridgeBaseQuantities"},
+    {"name": "bridge_part_type",      "enabled": true, "group": "Bridges",    "alias": "Bridge parts with type",        "ifc_source": "IfcBridgePart:Pset_BridgePartCommon.BridgePartType",        "aggregate": "count", "description": "Number of IfcBridgePart with BridgePartType in Pset_BridgePartCommon"},
+    {"name": "tunnel_type",           "enabled": true, "group": "Tunnels",    "alias": "Tunnels with type",             "ifc_source": "IfcTunnel:Pset_TunnelCommon.TunnelType",                    "aggregate": "count", "description": "Number of IfcTunnel with TunnelType in Pset_TunnelCommon"},
+    {"name": "tunnel_length_qto",     "enabled": true, "group": "Tunnels",    "alias": "Tunnels with length (QTO)",     "ifc_source": "IfcTunnel:Qto_TunnelBaseQuantities.Length",                 "aggregate": "count", "description": "Number of IfcTunnel with Length in Qto_TunnelBaseQuantities"},
+    {"name": "tunnel_part_type",      "enabled": true, "group": "Tunnels",    "alias": "Tunnel parts with type",        "ifc_source": "IfcTunnelPart:Pset_TunnelPartCommon.TunnelPartType",        "aggregate": "count", "description": "Number of IfcTunnelPart with TunnelPartType in Pset_TunnelPartCommon"},
+    {"name": "alignment_length_qto",  "enabled": true, "group": "Alignments", "alias": "Alignments with length (QTO)", "ifc_source": "IfcAlignment:Qto_AlignmentBaseQuantities.Length",            "aggregate": "count", "description": "Number of IfcAlignment with Length in Qto_AlignmentBaseQuantities"},
+    {"name": "kerb_length_qto",       "enabled": true, "group": "Roads",      "alias": "Kerbs with length (QTO)",       "ifc_source": "IfcKerb:Qto_KerbBaseQuantities.Length",                     "aggregate": "count", "description": "Number of IfcKerb with Length in Qto_KerbBaseQuantities"},
+    {"name": "marking_length_qto",    "enabled": true, "group": "Roads",      "alias": "Road markings with length (QTO)","ifc_source": "IfcRoadMarking:Qto_RoadMarkingBaseQuantities.Length",      "aggregate": "count", "description": "Number of IfcRoadMarking with Length in Qto_RoadMarkingBaseQuantities"},
+    {"name": "sign_type",             "enabled": true, "group": "Equipment",  "alias": "Signs with type",               "ifc_source": "IfcSign:Pset_SignCommon.SignType",                           "aggregate": "count", "description": "Number of IfcSign with SignType in Pset_SignCommon"}
+  ],
+  "i18n": {
+    "es": {
+      "groups": {
+        "Roads":      "Viales",
+        "Bridges":    "Puentes",
+        "Tunnels":    "Tuneles",
+        "Alignments": "Alineaciones",
+        "Equipment":  "Equipamiento"
+      },
+      "fields": {
+        "road_design_method":     {"alias": "Viales con metodo de diseno",        "description": "Numero de IfcRoad con StructuralDesignMethod en Pset_RoadCommon"},
+        "road_surface_type":      {"alias": "Viales con tipo de superficie",      "description": "Numero de IfcRoad con RoadSurface en Pset_RoadCommon"},
+        "road_length_qto":        {"alias": "Viales con longitud (QTO)",          "description": "Numero de IfcRoad con Length en Qto_RoadBaseQuantities"},
+        "road_area_qto":          {"alias": "Viales con area (QTO)",              "description": "Numero de IfcRoad con GrossArea en Qto_RoadBaseQuantities"},
+        "pavement_thickness":     {"alias": "Pavimentos con espesor",             "description": "Numero de IfcPavement con NominalThickness en Pset_PavementCommon"},
+        "bridge_structural_type": {"alias": "Puentes con tipo estructural",       "description": "Numero de IfcBridge con StructuralType en Pset_BridgeCommon"},
+        "bridge_span_qto":        {"alias": "Puentes con luz (QTO)",              "description": "Numero de IfcBridge con Length en Qto_BridgeBaseQuantities"},
+        "bridge_part_type":       {"alias": "Partes de puente con tipo",          "description": "Numero de IfcBridgePart con BridgePartType en Pset_BridgePartCommon"},
+        "tunnel_type":            {"alias": "Tuneles con tipo",                   "description": "Numero de IfcTunnel con TunnelType en Pset_TunnelCommon"},
+        "tunnel_length_qto":      {"alias": "Tuneles con longitud (QTO)",         "description": "Numero de IfcTunnel con Length en Qto_TunnelBaseQuantities"},
+        "tunnel_part_type":       {"alias": "Partes de tunel con tipo",           "description": "Numero de IfcTunnelPart con TunnelPartType en Pset_TunnelPartCommon"},
+        "alignment_length_qto":   {"alias": "Alineaciones con longitud (QTO)",    "description": "Numero de IfcAlignment con Length en Qto_AlignmentBaseQuantities"},
+        "kerb_length_qto":        {"alias": "Bordillos con longitud (QTO)",       "description": "Numero de IfcKerb con Length en Qto_KerbBaseQuantities"},
+        "marking_length_qto":     {"alias": "Marcas viales con longitud (QTO)",   "description": "Numero de IfcRoadMarking con Length en Qto_RoadMarkingBaseQuantities"},
+        "sign_type":              {"alias": "Senales con tipo",                   "description": "Numero de IfcSign con SignType en Pset_SignCommon"}
+      }
+    }
+  }
+}

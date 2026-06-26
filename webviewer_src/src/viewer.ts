@@ -1129,15 +1129,14 @@ function selectElement(expressId: number): void {
 
 // ── Props rendering ───────────────────────────────────────────────────────────
 
-function propRow(pset: string, key: string, value: string): string {
+// v1: _pset kept for when the transfer button is re-enabled (rename back to pset and add the button line)
+function propRow(_pset: string, key: string, value: string): string {
   return (
     `<div class="prop-row">` +
     `<span class="prop-key">${escHtml(key)}</span>` +
     `<div class="prop-col-resizer"></div>` +
     `<span class="prop-val">${escHtml(value)}</span>` +
-    `<button class="prop-transfer" ` +
-    `data-pset="${escHtml(pset)}" data-key="${escHtml(key)}" data-val="${escHtml(value)}" ` +
-    `title="Transfer to GIS field">→</button>` +
+    // restore: `<button class="prop-transfer" data-pset="${escHtml(_pset)}" data-key="${escHtml(key)}" data-val="${escHtml(value)}" title="Transfer to GIS field">→</button>` +
     `</div>`
   );
 }
