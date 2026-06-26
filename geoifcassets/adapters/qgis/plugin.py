@@ -159,6 +159,23 @@ class GeoIfcAssetsPlugin:
         self._selected_layer = layer
         self._selected_feature = feature
 
+        if feature is not None and layer is not None:
+            geom = feature.geometry()
+            if geom and not geom.isNull():
+                from qgis.core import QgsCoordinateTransform, QgsProject  # noqa: PLC0415
+                canvas = self._iface.mapCanvas()
+                bbox = geom.boundingBox()
+                layer_crs = layer.crs()
+                canvas_crs = canvas.mapSettings().destinationCrs()
+                if layer_crs != canvas_crs:
+                    transform = QgsCoordinateTransform(
+                        layer_crs, canvas_crs, QgsProject.instance()
+                    )
+                    bbox = transform.transformBoundingBox(bbox)
+                bbox.scale(1.5)
+                canvas.setExtent(bbox)
+                canvas.refresh()
+
         result = self._feature_reader.read_from_feature(layer, feature)
         self._sync_current_feature(result)
 
