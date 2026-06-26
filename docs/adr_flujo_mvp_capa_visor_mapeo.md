@@ -46,6 +46,10 @@ La persistencia granular de un `GlobalId` IFC asociado al feature no forma parte
 
 El visor debe poder abrirse desde el panel del complemento a partir del feature seleccionado.
 
+La tabla de features del dock incluye un boton **▶** por fila. Pulsar ese boton selecciona el feature y abre el visor IFC directamente para ese feature. Hacer clic en la fila sin pulsar el boton solo selecciona el feature y hace pan del mapa canvas, sin abrir el visor.
+
+El boton "Open Viewer" del panel abre el visor para el feature actualmente seleccionado. Si no hay ningun feature seleccionado o no tiene referencia IFC valida, el sistema muestra un mensaje comprensible y registra el evento en logs.
+
 Cuando la API de QGIS lo permita de forma estable en QGIS 3 y QGIS 4, el complemento podra registrar una accion de capa, por ejemplo:
 
 ```text
