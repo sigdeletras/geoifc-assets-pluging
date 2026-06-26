@@ -440,6 +440,8 @@ class GeoIfcAssetsDock:
         # ── Assemble tabs ─────────────────────────────────────────────────────
         self._tabs.addTab(layer_tab, tr("GeoIfcAssets", "IFC Source"))
         self._tabs.addTab(extract_tab, tr("GeoIfcAssets", "Extract & Export"))
+        self._tabs.addTab(self._build_help_tab(), tr("GeoIfcAssets", "Help"))
+        self._tabs.addTab(self._build_about_tab(), tr("GeoIfcAssets", "About"))
         layout.addWidget(self._tabs)
 
         self.widget.setWidget(content)
@@ -892,6 +894,81 @@ class GeoIfcAssetsDock:
                         item.setCheckState(col_i, Qt.Unchecked)
                     except AttributeError:
                         item.setCheckState(col_i, Qt.CheckState.Unchecked)
+
+    # ── Help / About tab builders ─────────────────────────────────────────────
+
+    def _build_help_tab(self) -> Any:
+        from pathlib import Path
+
+        from qgis.PyQt.QtCore import QUrl  # noqa: PLC0415
+        from qgis.PyQt.QtGui import QDesktopServices  # noqa: PLC0415
+        from qgis.PyQt.QtWidgets import QTextBrowser, QVBoxLayout, QWidget  # noqa: PLC0415
+
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(6, 6, 6, 6)
+
+        browser = QTextBrowser()
+        browser.setOpenLinks(False)
+        browser.anchorClicked.connect(lambda url: QDesktopServices.openUrl(QUrl(url) if isinstance(url, str) else url))
+
+        help_path = Path(__file__).parent.parent.parent / "help.md"
+        try:
+            text = help_path.read_text(encoding="utf-8")
+            try:
+                browser.setMarkdown(text)
+            except AttributeError:
+                browser.setPlainText(text)
+        except OSError:
+            browser.setPlainText(tr("GeoIfcAssets", "Help file not found."))
+
+        layout.addWidget(browser)
+        return tab
+
+    def _build_about_tab(self) -> Any:
+        import configparser  # noqa: PLC0415
+        from pathlib import Path
+
+        from qgis.PyQt.QtCore import QUrl  # noqa: PLC0415
+        from qgis.PyQt.QtGui import QDesktopServices  # noqa: PLC0415
+        from qgis.PyQt.QtWidgets import QTextBrowser, QVBoxLayout, QWidget  # noqa: PLC0415
+
+        meta_path = Path(__file__).parent.parent.parent / "metadata.txt"
+        cfg = configparser.ConfigParser()
+        cfg.read(str(meta_path), encoding="utf-8")
+        g = cfg["general"] if "general" in cfg else {}
+
+        name = g.get("name", "GeoIFC Assets")
+        version = g.get("version", "—")
+        about = g.get("about", g.get("description", ""))
+
+        html = (
+            "<html><body style='font-family: sans-serif; margin: 12px;'>"
+            f"<h2 style='color: #1756A6;'>{name}</h2>"
+            f"<p style='color: #555;'>Version {version}</p>"
+            f"<p>{about}</p>"
+            "<hr/>"
+            "<h3>Developer</h3>"
+            "<p><b>GeoINNOVA</b><br/>"
+            "Geographic information innovation and GIS consulting.</p>"
+            "<p>"
+            "Web: <a href='https://www.geoinnova.org'>www.geoinnova.org</a><br/>"
+            "Contact: <a href='mailto:info@geoinnova.org'>info@geoinnova.org</a>"
+            "</p>"
+            "</body></html>"
+        )
+
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        browser = QTextBrowser()
+        browser.setOpenLinks(False)
+        browser.anchorClicked.connect(lambda url: QDesktopServices.openUrl(QUrl(url) if isinstance(url, str) else url))
+        browser.setHtml(html)
+
+        layout.addWidget(browser)
+        return tab
 
     def refresh_layers(self) -> None:
         self._updating_ui = True
