@@ -254,14 +254,14 @@ class GeoIfcAssetsDock:
         extract_layout.addWidget(action_bar)
         extract_layout.addWidget(self._show_with_data_cb)
 
-        # Fields tree (grupos → campos, 3 columnas) — panel superior del splitter
+        # Fields tree (grupos → campos, 4 columnas) — panel superior del splitter
         self._fields_tree = QTreeWidget()
         self._fields_tree.setColumnCount(4)
         self._fields_tree.setHeaderLabels([
             tr("GeoIfcAssets", "Property"),
-            tr("GeoIfcAssets", "GIS field"),
-            tr("GeoIfcAssets", "IFC source"),
+            tr("GeoIfcAssets", "GIS Name"),
             tr("GeoIfcAssets", "Value"),
+            tr("GeoIfcAssets", "IFC source"),
         ])
         try:
             self._fields_tree.header().setSectionResizeMode(0, QHeaderView.Interactive)
@@ -510,7 +510,7 @@ class GeoIfcAssetsDock:
                 group_item.setCheckState(0, Qt.CheckState.Unchecked)
 
             for field in fields_in_group:
-                child = QTreeWidgetItem([field.alias, field.name, field.ifc_source, ""])
+                child = QTreeWidgetItem([field.alias, field.name, "", field.ifc_source])
                 child.setData(0, _FIELD_NAME_ROLE, field.name)
                 child.setToolTip(0, field.description)
                 try:
