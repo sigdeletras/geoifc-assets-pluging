@@ -2,23 +2,59 @@
 
 ## 1. Plantillas de extracción
 
-El sistema estará basado en **plantillas de extracción** definidas mediante archivos JSON. Cada plantilla describirá las propiedades que podrán recuperarse de un modelo IFC.
+El sistema se basa en **plantillas de extracción** definidas mediante archivos JSON. Cada plantilla describe las propiedades que pueden recuperarse de un modelo IFC.
 
-El complemento incluirá un conjunto de plantillas predefinidas, aunque el usuario podrá crear sus propias plantillas o cargar plantillas personalizadas, siempre que respeten la estructura JSON definida.
+La plantilla base se encuentra en `geoifcassets/templates/ifc_core_catalog.json`. El usuario puede crear plantillas personalizadas siempre que respeten la estructura JSON definida.
 
-Cada plantilla contendrá, como mínimo, la siguiente información para cada propiedad:
+### 1.1 Bloque `metadata` (nivel raíz)
 
-* Tipo (CORE o CLASS_METRIC).
-* Grupo al que pertenece (por ejemplo: CDE_IFC, Archivo, IFC, Proyecto, Localización, Organización espacial, Objetos, Geometría, Materiales, Calidad BIM, Indicadores, etc.).
-* Identificador de la propiedad.
-* Nombre del campo que se creará en la capa GIS.
-* Alias del campo.
-* Descripción.
-* Tipo de dato.
-* Unidad (cuando proceda).
-* Origen del dato (Cabecera IFC, IfcProject, Quantity Set, Property Set, cálculo geométrico, derivado, etc.).
-* Indicador de obligatoriedad.
-* Relevancia para explotación GIS.
+Cada plantilla incluye un bloque `metadata` con información descriptiva sobre la propia plantilla:
+
+| Campo | Descripción |
+|---|---|
+| `author` | Autor de la plantilla |
+| `contact` | Correo de contacto del mantenedor |
+| `created_at` | Fecha de creación (ISO 8601) |
+| `updated_at` | Fecha de última modificación (ISO 8601) |
+| `template_version` | Versión del esquema de la plantilla |
+| `min_extractor_version` | Versión mínima del extractor compatible |
+| `ifc_versions` | Lista de versiones IFC cubiertas (`["IFC2X3", "IFC4", "IFC4X3"]`) |
+| `language` | Idioma por defecto de alias y descripciones |
+| `license` | Licencia de la plantilla |
+| `tags` | Etiquetas para búsqueda y categorización |
+
+### 1.2 Array `fields`
+
+Cada elemento del array `fields` define una propiedad extraíble. Campos implementados:
+
+| Campo JSON | Obligatorio | Descripción |
+|---|---|---|
+| `name` | sí | Identificador interno; se usa como nombre de campo GIS |
+| `enabled` | sí | Si la propiedad está activa por defecto |
+| `group` | sí | Grupo funcional (File, IFC Header, Project, Location, …) |
+| `alias` | no | Nombre legible mostrado en la UI |
+| `description` | no | Descripción del campo |
+| `ifc_source` | no | Origen IFC exacto del valor (ver tabla siguiente). `null` para campos de sistema de archivos, metadatos del extractor o indicadores calculados |
+| `computed` | no | `true` si el valor es calculado/derivado; `false` si es lectura directa de un atributo IFC o cabecera STEP |
+| `min_ifc_version` | no | Solo presente cuando el campo NO está disponible en IFC2X3 (ej. `"IFC4"` para campos que requieren `IfcMapConversion`) |
+| `ifc4x3_note` | no | Solo presente cuando el campo tiene comportamiento diferente en IFC4X3 (ej. deprecación de `IfcBuilding` → `IfcFacility`) |
+
+### 1.3 Valores de `ifc_source`
+
+| Patrón | Ejemplo | Significado |
+|---|---|---|
+| `FILE_NAME.attr` | `FILE_NAME.author` | Atributo de la sección FILE_NAME de la cabecera STEP |
+| `FILE_DESCRIPTION` | `FILE_DESCRIPTION` | Sección FILE_DESCRIPTION de la cabecera STEP |
+| `FILE_SCHEMA` | `FILE_SCHEMA` | Sección FILE_SCHEMA de la cabecera STEP |
+| `IfcEntity.Attr` | `IfcProject.Name` | Atributo directo de una entidad IFC |
+| `IfcEntity` | `IfcSite` | Entidad IFC (para conteos o comprobaciones de presencia) |
+| `IfcEntityQuantity.QtoName` | `IfcElementQuantity.GrossFloorArea` | Quantity de un `IfcElementQuantity` |
+| `IfcEntity A \| IfcEntity B` | `IfcBuildingStorey \| IfcSpace` | Cualquiera de las dos entidades |
+| `null` | — | Campo de sistema de archivos, metadato del extractor o indicador calculado sin origen IFC directo |
+
+### 1.4 Localización (`i18n`)
+
+La plantilla incluye un bloque `i18n` con traducciones de alias, descripciones y nombres de grupo. El loader aplica la traducción correspondiente al locale activo en tiempo de carga, sin modificar la plantilla.
 
 El objetivo es desacoplar completamente la lógica de extracción de la definición de propiedades, permitiendo ampliar el catálogo sin modificar el código del complemento.
 
