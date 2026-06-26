@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 
@@ -68,3 +68,51 @@ class ModelMetric:
     value: object         # scalar: str | int | float | None
     unit: str             # "", "m²", "m", "count", etc.
     source: MetricSource
+
+
+# ── Template-based extraction ────────────────────────────────────────────────
+
+
+@dataclass
+class TemplateField:
+    """One field entry from a property extraction template."""
+
+    name: str
+    enabled: bool
+    group: str = ""        # canonical English key — used for ordering
+    alias: str = ""
+    description: str = ""
+    group_label: str = ""  # localized display name; falls back to group when empty
+
+
+@dataclass
+class ClassMetricSpec:
+    """Which metrics to extract for one IFC class."""
+
+    ifc_class: str
+    prefix: str
+    metrics: list[str]   # subset of: "count", "length", "area", "volume"
+    enabled: bool
+
+
+@dataclass
+class PropertyTemplate:
+    """A fully loaded and enriched property extraction template."""
+
+    template_name: str
+    extractor_version: str
+    description: str
+    fields: list[TemplateField]
+    class_metrics: list[ClassMetricSpec]
+
+
+@dataclass
+class IFCClassDiscovery:
+    """Discovered IFC class info for the Properties → IFC Classes section."""
+
+    ifc_class: str
+    prefix: str       # class name without "Ifc", lowercase  (IfcWall → "wall")
+    count: int
+    available: set    # subset of {"count", "length", "area", "volume"} with QtoSet data
+    values: dict = field(default_factory=dict)   # {metric: extracted_value_or_None}
+    sources: dict = field(default_factory=dict)  # {metric: "Qto" | "calc" | "—"}

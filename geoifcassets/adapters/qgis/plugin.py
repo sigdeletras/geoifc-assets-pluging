@@ -43,6 +43,8 @@ class GeoIfcAssetsPlugin:
         self._selected_feature: Any | None = None
         self._active_storey: dict | None = None
         self._last_extracted_ifc: str | None = None
+        self._current_template: Any | None = None
+        self._last_extracted_fields: dict[str, Any] = {}
 
     def initGui(self) -> None:  # noqa: N802
         """Create menu, toolbar action and dock."""
@@ -96,7 +98,10 @@ class GeoIfcAssetsPlugin:
                 on_browse_ifc=self._browse_ifc_file,
                 on_create_temp_layer=self._show_create_temp_layer_dialog,
                 on_add_to_layer=self._show_add_to_layer_dialog,
+                on_load_json_template=self._load_json_template_file,
+                on_load_to_gis=self._handle_load_to_gis,
             )
+            self._load_default_template()
             dock_area = getattr(Qt, "RightDockWidgetArea", None)
             if dock_area is None:
                 dock_area = Qt.DockWidgetArea.RightDockWidgetArea
@@ -459,6 +464,261 @@ class GeoIfcAssetsPlugin:
                 self._dock.add_user_log(tr("GeoIfcAssets", "No model metrics could be extracted."))
 
         self._logger.info("Model metrics extracted", count=len(metrics), ifc_path=ifc_path)
+        self._extract_and_show_fields(ifc_path)
+        self._discover_and_show_ifc_classes(ifc_path)
+
+    def _extract_and_show_fields(self, ifc_path: str) -> None:
+        """Extract template fields from the IFC and populate the Extract tab preview."""
+        if self._dock is None or self._current_template is None:
+            return
+        from geoifcassets.adapters.ifc.ifc_field_extractor import extract_fields  # noqa: PLC0415
+
+        enabled_fields = [f.name for f in self._current_template.fields if f.enabled or True]
+        values = extract_fields(ifc_path, enabled_fields)
+        self._last_extracted_fields = values
+        self._dock.set_extract_values(values)
+        self._logger.info(
+            "Extract tab values populated",
+            fields=len(values),
+            non_null=sum(1 for v in values.values() if v is not None),
+            ifc_path=ifc_path,
+        )
+
+    def _discover_and_show_ifc_classes(self, ifc_path: str) -> None:
+        """Discover IFC classes in the model and populate the Properties IFC Classes section."""
+        if self._dock is None:
+            return
+        from geoifcassets.adapters.ifc.class_extractor import discover_ifc_classes  # noqa: PLC0415
+
+        classes = discover_ifc_classes(ifc_path)
+        classes_info = [
+            {
+                "ifc_class": c.ifc_class,
+                "count": c.count,
+                "available": c.available,
+                "values": c.values,
+                "sources": c.sources,
+            }
+            for c in classes
+        ]
+        self._dock.set_ifc_classes(classes_info)
+        self._logger.info("IFC classes discovered", classes=len(classes), ifc_path=ifc_path)
+
+    def _qgis_locale(self) -> str:
+        """Return the two-letter QGIS UI language code (e.g. 'es'). Falls back to 'en'."""
+        try:
+            from qgis.core import QgsApplication  # noqa: PLC0415
+            raw = QgsApplication.locale() or "en"
+            return raw.split("_")[0].lower()
+        except Exception:  # noqa: BLE001
+            return "en"
+
+    def _load_default_template(self) -> None:
+        """Load the built-in ifc_core_catalog template and set it on the dock."""
+        from geoifcassets.core.template_loader import (  # noqa: PLC0415
+            list_builtin_templates,
+            load_builtin_template,
+        )
+
+        builtin_names = list_builtin_templates()
+        if not builtin_names:
+            self._logger.warning("No built-in templates found in geoifcassets/templates/")
+            return
+
+        try:
+            template = load_builtin_template(builtin_names[0], locale=self._qgis_locale())
+        except (ValueError, FileNotFoundError) as exc:
+            self._logger.warning("Could not load default template", error=str(exc))
+            return
+
+        self._current_template = template
+        if self._dock is not None:
+            self._dock.set_template(template, builtin_names)
+        self._logger.info("Default template loaded", template=template.template_name)
+
+    def _load_json_template_file(self) -> None:
+        """Open a file dialog and load a user-supplied template JSON."""
+        from qgis.PyQt.QtWidgets import QFileDialog  # noqa: PLC0415
+
+        from geoifcassets.core.template_loader import (  # noqa: PLC0415
+            list_builtin_templates,
+            load_template_from_path,
+        )
+
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            tr("GeoIfcAssets", "Load extraction template"),
+            "",
+            tr("GeoIfcAssets", "JSON files (*.json);;All files (*)"),
+        )
+        if not path:
+            return
+
+        try:
+            template = load_template_from_path(path, locale=self._qgis_locale())
+        except ValueError as exc:
+            self._messages.warning(
+                tr("GeoIfcAssets", "Invalid template file: {error}").format(error=str(exc))
+            )
+            return
+
+        self._current_template = template
+        builtin_names = list_builtin_templates()
+        display_names = builtin_names + [Path(path).stem]
+        if self._dock is not None:
+            self._dock.set_template(template, display_names)
+            self._dock.add_user_log(
+                tr("GeoIfcAssets", "Template loaded: {name}").format(name=template.template_name)
+            )
+
+        if self._last_extracted_ifc:
+            self._extract_and_show_fields(self._last_extracted_ifc)
+
+        self._logger.info("User template loaded", path=path, template=template.template_name)
+
+    def _handle_load_to_gis(self) -> None:
+        """Write selected Extract tab fields to the active GIS feature."""
+        from qgis.PyQt.QtCore import QVariant  # noqa: PLC0415
+        from qgis.PyQt.QtWidgets import (  # noqa: PLC0415
+            QDialog,
+            QDialogButtonBox,
+            QLabel,
+            QVBoxLayout,
+        )
+        from qgis.core import QgsField  # noqa: PLC0415
+
+        layer = self._selected_layer
+        feature = self._selected_feature
+        if layer is None or feature is None:
+            self._messages.warning(
+                tr("GeoIfcAssets", "No GIS feature selected. Select a feature before loading.")
+            )
+            return
+
+        if self._dock is None:
+            return
+
+        selected_field_names = self._dock.get_selected_fields()
+        class_pairs = self._dock.get_selected_class_metrics()
+
+        if not selected_field_names and not class_pairs:
+            self._messages.warning(
+                tr("GeoIfcAssets", "No fields or class metrics selected.")
+            )
+            return
+
+        if not self._last_extracted_fields and not self._last_extracted_ifc:
+            self._messages.warning(
+                tr("GeoIfcAssets", "No IFC data extracted yet. Select an IFC feature first.")
+            )
+            return
+
+        # Build updates from fields tree
+        values_to_write: dict[str, Any] = {
+            name: self._last_extracted_fields[name]
+            for name in selected_field_names
+            if name in self._last_extracted_fields
+            and self._last_extracted_fields[name] is not None
+        }
+
+        # Also include class metrics from the IFC Classes section
+        # (class_pairs already computed above)
+        if class_pairs and self._last_extracted_ifc:
+            from geoifcassets.adapters.ifc.class_extractor import extract_class_metrics  # noqa: PLC0415
+            from geoifcassets.core.models import ClassMetricSpec  # noqa: PLC0415
+
+            specs = [
+                ClassMetricSpec(
+                    ifc_class=ifc_class,
+                    prefix=ifc_class[3:].lower() if ifc_class.startswith("Ifc") else ifc_class.lower(),
+                    metrics=metrics,
+                    enabled=True,
+                )
+                for ifc_class, metrics in class_pairs
+            ]
+            class_values = extract_class_metrics(self._last_extracted_ifc, specs)
+            for k, v in class_values.items():
+                if v is not None:
+                    values_to_write[k] = v
+
+        if not values_to_write:
+            self._messages.warning(
+                tr("GeoIfcAssets", "All selected fields are empty in the current IFC.")
+            )
+            return
+
+        existing_fields = {f.name() for f in layer.fields()}
+        fields_to_create = [n for n in values_to_write if n not in existing_fields]
+
+        if fields_to_create:
+            dlg = QDialog()
+            dlg.setWindowTitle(tr("GeoIfcAssets", "Create new GIS fields"))
+            layout = QVBoxLayout(dlg)
+            layout.addWidget(QLabel(
+                tr(
+                    "GeoIfcAssets",
+                    "{n} new field(s) will be created in layer «{layer}». Continue?",
+                ).format(n=len(fields_to_create), layer=layer.name())
+            ))
+            try:
+                ok_cancel = QDialogButtonBox.Ok | QDialogButtonBox.Cancel  # type: ignore[attr-defined]
+            except AttributeError:
+                ok_cancel = (
+                    QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+                )
+            buttons = QDialogButtonBox(ok_cancel)
+            buttons.accepted.connect(dlg.accept)
+            buttons.rejected.connect(dlg.reject)
+            layout.addWidget(buttons)
+            if not dlg.exec():
+                return
+
+            layer.startEditing()
+            for field_name in fields_to_create:
+                val = values_to_write[field_name]
+                if isinstance(val, bool):
+                    qtype = QVariant.Bool
+                elif isinstance(val, int):
+                    qtype = QVariant.Int
+                elif isinstance(val, float):
+                    qtype = QVariant.Double
+                else:
+                    qtype = QVariant.String
+                layer.addAttribute(QgsField(field_name, qtype))
+            if not layer.commitChanges():
+                self._messages.warning(
+                    tr("GeoIfcAssets", "Could not create new fields in layer.")
+                )
+                return
+
+        feature_id = feature.id()
+        layer.startEditing()
+        written: list[str] = []
+        for field_name, value in values_to_write.items():
+            field_index = layer.fields().indexOf(field_name)
+            if field_index < 0:
+                continue
+            str_value = str(value) if not isinstance(value, (int, float, bool)) else value
+            if layer.changeAttributeValue(feature_id, field_index, str_value):
+                written.append(field_name)
+
+        self._apply_status_updates(layer, feature_id, success=bool(written))
+        layer.commitChanges()
+
+        msg = tr(
+            "GeoIfcAssets",
+            "{n} field(s) written to feature {fid} in layer «{layer}».",
+        ).format(n=len(written), fid=feature_id, layer=layer.name())
+        self._messages.info(msg)
+        if self._dock is not None:
+            self._dock.add_user_log(msg)
+            self._dock.set_extract_status(msg)
+        self._logger.info(
+            "Extract batch write complete",
+            written=written,
+            layer=layer.name(),
+            feature_id=feature_id,
+        )
 
     def _on_metric_transfer(self, metric: object) -> None:
         """Forward a model metric to the BIM→GIS transfer dialog."""
