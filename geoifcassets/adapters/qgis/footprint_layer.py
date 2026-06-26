@@ -91,6 +91,7 @@ def add_footprint_layer(footprint: StoreyFootprint, ifc_path: str) -> str:
     provider.addFeature(feature)
     layer.updateExtents()
 
+    layer.setCustomProperty("geoifcassets_layer_type", "footprint")
     project.addMapLayer(layer)
 
     _log.info(

@@ -102,6 +102,7 @@ class GeoIfcAssetsPlugin:
                 on_add_to_layer=self._show_add_to_layer_dialog,
                 on_load_json_template=self._load_json_template_file,
                 on_load_to_gis=self._handle_load_to_gis,
+                on_open_viewer_for_feature=self._open_viewer_for_feature,
             )
             self._load_default_template()
             dock_area = getattr(Qt, "RightDockWidgetArea", None)
@@ -183,6 +184,13 @@ class GeoIfcAssetsPlugin:
         if self._dock is not None:
             self._dock.set_active_storey(None)
 
+        if self._viewer_dock is not None and self._current_reference is None:
+            self._viewer_dock.clear_reference()
+            if self._dock is not None:
+                self._dock.clear_model_metrics()
+
+    def _open_viewer_for_feature(self, layer_id: str, feature_id: int) -> None:
+        self._select_feature(layer_id, feature_id)
         if self._current_reference is not None and self._viewer_dock is not None:
             self._viewer_dock.open_reference(self._current_reference)
             if self._dock is not None:
@@ -193,10 +201,6 @@ class GeoIfcAssetsPlugin:
             else:
                 if self._dock is not None:
                     self._dock.clear_model_metrics()
-        elif self._viewer_dock is not None:
-            self._viewer_dock.clear_reference()
-            if self._dock is not None:
-                self._dock.clear_model_metrics()
 
     def _sync_current_feature(
         self, result: FeatureIfcReferenceReadResult
