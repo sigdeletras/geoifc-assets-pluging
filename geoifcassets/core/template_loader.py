@@ -135,6 +135,7 @@ def _parse_fields(
         group = str(entry.get("group", "Custom"))
         alias = str(entry.get("alias", name))
         description = str(entry.get("description", ""))
+        ifc_source = str(entry.get("ifc_source") or "")
 
         # Apply locale overrides from external i18n dicts
         loc_field = i18n_fields.get(name, {})
@@ -149,6 +150,7 @@ def _parse_fields(
             group=group,
             alias=alias,
             description=description,
+            ifc_source=ifc_source,
             group_label=group_label,
         ))
     return result

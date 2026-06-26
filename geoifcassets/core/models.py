@@ -82,6 +82,7 @@ class TemplateField:
     group: str = ""        # canonical English key — used for ordering
     alias: str = ""
     description: str = ""
+    ifc_source: str = ""
     group_label: str = ""  # localized display name; falls back to group when empty
 
 

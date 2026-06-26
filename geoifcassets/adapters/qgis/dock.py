@@ -256,16 +256,18 @@ class GeoIfcAssetsDock:
 
         # Fields tree (grupos → campos, 3 columnas) — panel superior del splitter
         self._fields_tree = QTreeWidget()
-        self._fields_tree.setColumnCount(3)
+        self._fields_tree.setColumnCount(4)
         self._fields_tree.setHeaderLabels([
             tr("GeoIfcAssets", "Property"),
-            tr("GeoIfcAssets", "Field"),
+            tr("GeoIfcAssets", "GIS field"),
+            tr("GeoIfcAssets", "IFC source"),
             tr("GeoIfcAssets", "Value"),
         ])
         try:
             self._fields_tree.header().setSectionResizeMode(0, QHeaderView.Interactive)
             self._fields_tree.header().setSectionResizeMode(1, QHeaderView.Interactive)
-            self._fields_tree.header().setSectionResizeMode(2, QHeaderView.Stretch)
+            self._fields_tree.header().setSectionResizeMode(2, QHeaderView.Interactive)
+            self._fields_tree.header().setSectionResizeMode(3, QHeaderView.Stretch)
         except AttributeError:
             self._fields_tree.header().setSectionResizeMode(
                 0, QHeaderView.ResizeMode.Interactive
@@ -274,10 +276,14 @@ class GeoIfcAssetsDock:
                 1, QHeaderView.ResizeMode.Interactive
             )
             self._fields_tree.header().setSectionResizeMode(
-                2, QHeaderView.ResizeMode.Stretch
+                2, QHeaderView.ResizeMode.Interactive
+            )
+            self._fields_tree.header().setSectionResizeMode(
+                3, QHeaderView.ResizeMode.Stretch
             )
         self._fields_tree.setColumnWidth(0, 180)
         self._fields_tree.setColumnWidth(1, 120)
+        self._fields_tree.setColumnWidth(2, 140)
         self._fields_tree.itemChanged.connect(self._on_tree_item_changed)
 
         # IFC Classes section — panel inferior del splitter
@@ -487,7 +493,7 @@ class GeoIfcAssetsDock:
         for group_name in sorted(groups.keys(), key=group_order_key):
             fields_in_group = groups[group_name]
             group_display = fields_in_group[0].group_label or group_name
-            group_item = QTreeWidgetItem([group_display, "", ""])
+            group_item = QTreeWidgetItem([group_display, "", "", ""])
             try:
                 group_item.setFlags(
                     group_item.flags()
@@ -504,7 +510,7 @@ class GeoIfcAssetsDock:
                 group_item.setCheckState(0, Qt.CheckState.Unchecked)
 
             for field in fields_in_group:
-                child = QTreeWidgetItem([field.alias, field.name, ""])
+                child = QTreeWidgetItem([field.alias, field.name, field.ifc_source, ""])
                 child.setData(0, _FIELD_NAME_ROLE, field.name)
                 child.setToolTip(0, field.description)
                 try:
@@ -642,7 +648,7 @@ class GeoIfcAssetsDock:
             values: dict = cls_info.get("values", {})
             sources: dict = cls_info.get("sources", {})
 
-            item = QTreeWidgetItem([f"{ifc_class}  ({count})", "", "", "", ""])
+            item = QTreeWidgetItem([f"{ifc_class}", "", "", "", ""])
             item.setData(0, _CLASS_ROLE, ifc_class)
 
             for col_i, metric in enumerate(_METRIC_COLS, start=1):
