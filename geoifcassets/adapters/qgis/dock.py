@@ -836,9 +836,16 @@ class GeoIfcAssetsDock:
         self._classes_toggle_btn.setText(("▼  " if expanded else "▶  ") + label)
 
     def _filter_fields_tree(self, state: int) -> None:
-        """Hide/show field rows based on whether the Value column is populated."""
+        """Hide/show field rows based on whether the Value column is populated.
+
+        When activated, also selects only the visible (data-populated) fields so
+        the user can filter and choose in a single click.
+        """
+        from qgis.PyQt.QtCore import Qt  # noqa: PLC0415
+
         show_only = bool(state)  # 0=unchecked → False, 2=checked → True
 
+        self._fields_tree.blockSignals(True)
         root = self._fields_tree.invisibleRootItem()
         for g_idx in range(root.childCount()):
             group_item = root.child(g_idx)
@@ -850,9 +857,20 @@ class GeoIfcAssetsDock:
                 has_value = bool(field_item.text(2).strip())
                 should_show = (not show_only) or has_value
                 field_item.setHidden(not should_show)
+                if show_only:
+                    try:
+                        field_item.setCheckState(0, Qt.Checked if has_value else Qt.Unchecked)
+                    except AttributeError:
+                        field_item.setCheckState(
+                            0,
+                            Qt.CheckState.Checked if has_value else Qt.CheckState.Unchecked,
+                        )
                 if should_show:
                     any_visible = True
             group_item.setHidden(not any_visible)
+        self._fields_tree.blockSignals(False)
+        if show_only:
+            self._sync_group_check_states()
 
     def _toggle_tree_expand(self, expanded: bool) -> None:
         """Expand or collapse all group nodes in the fields tree."""
@@ -943,9 +961,9 @@ class GeoIfcAssetsDock:
             f"<h2>{name}</h2>"
             f"<p>Version {version}</p>"
             f"<p>{about}</p>"
-            "<hr/>"
+
             "<h3>Developer</h3>"
-            "<p><b>GeoINNOVA</b><br/>"
+            "<p><b>Geoinnova</b><br/>"
             "Geographic information innovation and GIS consulting.</p>"
             "<p>"
             "Web: <a href='https://www.geoinnova.org'>www.geoinnova.org</a><br/>"
