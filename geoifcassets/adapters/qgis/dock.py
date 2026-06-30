@@ -947,7 +947,8 @@ class GeoIfcAssetsDock:
         from qgis.PyQt.QtGui import QDesktopServices  # noqa: PLC0415
         from qgis.PyQt.QtWidgets import QTextBrowser, QVBoxLayout, QWidget  # noqa: PLC0415
 
-        meta_path = Path(__file__).parent.parent.parent / "metadata.txt"
+        plugin_root = Path(__file__).parent.parent.parent
+        meta_path = plugin_root / "metadata.txt"
         cfg = configparser.ConfigParser()
         cfg.read(str(meta_path), encoding="utf-8")
         g = cfg["general"] if "general" in cfg else {}
@@ -956,8 +957,13 @@ class GeoIfcAssetsDock:
         version = g.get("version", "—")
         about = g.get("about", g.get("description", ""))
 
+        icon_candidate = plugin_root / "icon" / "icon.svg"
+        icon_path = icon_candidate if icon_candidate.exists() else plugin_root / "icon.svg"
+        icon_url = icon_path.as_uri()
+
         html = (
             "<html><body>"
+            f"<img src='{icon_url}' width='80' height='80' align='right' style='margin:8px'/>"
             f"<h2>{name}</h2>"
             f"<p>Version {version}</p>"
             f"<p>{about}</p>"

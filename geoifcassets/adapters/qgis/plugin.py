@@ -50,6 +50,11 @@ class GeoIfcAssetsPlugin:
 
     def initGui(self) -> None:  # noqa: N802
         """Create menu, toolbar action and dock."""
+        from geoifcassets.install.requirements.install_requirements import (  # noqa: PLC0415
+            check_and_install_requirements,
+        )
+        check_and_install_requirements()
+
         # Set Chromium flags as early as possible (before any QWebEngineView
         # is created in this QGIS session) so SwiftShader applies on first use.
         _ensure_swiftshader_flag()
@@ -57,7 +62,11 @@ class GeoIfcAssetsPlugin:
         from qgis.PyQt.QtGui import QIcon
         from qgis.PyQt.QtWidgets import QAction
 
-        icon_path = Path(__file__).resolve().parents[2] / "icon.svg"
+        # To test a new icon, change the filename here (options in geoifcassets/icon/).
+        icon_file = "icon.svg"
+        icon_candidate = Path(__file__).resolve().parents[2] / "icon" / icon_file
+        icon_fallback = Path(__file__).resolve().parents[2] / "icon.svg"
+        icon_path = icon_candidate if icon_candidate.exists() else icon_fallback
         self._action = QAction(QIcon(str(icon_path)), tr("GeoIfcAssets", PLUGIN_NAME), None)
         self._action.triggered.connect(self._show_dock)
 
