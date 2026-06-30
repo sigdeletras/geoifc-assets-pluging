@@ -59,7 +59,6 @@ class GeoIfcAssetsDock:
         on_add_to_layer: Callable[[], None] | None = None,
         on_load_json_template: Callable[[], None] | None = None,
         on_load_to_gis: Callable[[], None] | None = None,
-        on_open_viewer_for_feature: Callable[[str, int], None] | None = None,
     ) -> None:
         from qgis.PyQt.QtWidgets import (
             QCheckBox,
@@ -86,7 +85,6 @@ class GeoIfcAssetsDock:
         self._on_feature_selected = on_feature_selected
         self._on_load_json_template = on_load_json_template
         self._on_load_to_gis = on_load_to_gis
-        self._on_open_viewer_for_feature = on_open_viewer_for_feature
         self._layer_by_row: dict[int, str] = {}
         self._feature_by_row: dict[int, int] = {}
         self._updating_ui = False
@@ -126,13 +124,12 @@ class GeoIfcAssetsDock:
         layer_layout.addWidget(_layer_row)
 
         # — Feature table
-        self._feature_table = QTableWidget(0, 4)
+        self._feature_table = QTableWidget(0, 3)
         self._feature_table.setHorizontalHeaderLabels(
             [
                 tr("GeoIfcAssets", "Feature ID"),
                 tr("GeoIfcAssets", "Feature"),
                 tr("GeoIfcAssets", "IFC source"),
-                "",
             ]
         )
         self._feature_table.setSelectionBehavior(_table_selection_behavior())
@@ -1002,12 +999,9 @@ class GeoIfcAssetsDock:
         self._set_feature_rows(self._on_layer_selected(layer_id))
 
     def _set_feature_rows(self, features: list[FeatureListItem]) -> None:
-        from qgis.PyQt.QtWidgets import QPushButton  # noqa: PLC0415
-
         self._updating_ui = True
         self._feature_by_row.clear()
         self._feature_table.setRowCount(len(features))
-        layer_id = self._layer_by_row.get(self._layer_combo.currentIndex(), "")
         for row, feature in enumerate(features):
             self._feature_by_row[row] = feature.feature_id
             self._feature_table.setItem(
@@ -1017,22 +1011,6 @@ class GeoIfcAssetsDock:
             self._feature_table.setItem(
                 row, 2, self._table_item(feature.ifc_source)
             )
-            if self._on_open_viewer_for_feature is not None:
-                btn = QPushButton("▶")
-                btn.setFixedWidth(28)
-                btn.setToolTip(tr("GeoIfcAssets", "Open IFC viewer for this feature"))
-                btn.clicked.connect(
-                    lambda checked=False, lid=layer_id, fid=feature.feature_id:
-                        self._on_open_viewer_for_feature(lid, fid)
-                )
-                self._feature_table.setCellWidget(row, 3, btn)
-        from qgis.PyQt.QtWidgets import QHeaderView  # noqa: PLC0415
-
-        header = self._feature_table.horizontalHeader()
-        try:
-            header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        except AttributeError:
-            header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self._updating_ui = False
 
     def _select_feature_row(self) -> None:

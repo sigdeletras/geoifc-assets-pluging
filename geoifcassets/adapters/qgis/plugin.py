@@ -102,7 +102,6 @@ class GeoIfcAssetsPlugin:
                 on_add_to_layer=self._show_add_to_layer_dialog,
                 on_load_json_template=self._load_json_template_file,
                 on_load_to_gis=self._handle_load_to_gis,
-                on_open_viewer_for_feature=self._open_viewer_for_feature,
             )
             self._load_default_template()
             dock_area = getattr(Qt, "RightDockWidgetArea", None)
@@ -269,6 +268,13 @@ class GeoIfcAssetsPlugin:
             ifc_read_status=read_result.status.value,
             ifc_schema=read_result.summary.schema if read_result.summary else None,
         )
+
+        ifc_path = self._current_reference.value
+        if not ifc_path.startswith(("http://", "https://")):
+            self._extract_and_show_metrics(ifc_path)
+        else:
+            if self._dock is not None:
+                self._dock.clear_model_metrics()
 
     def _handle_transfer(self, data: dict) -> None:
         """Receive a transfer message from the viewer (Qt main thread).
