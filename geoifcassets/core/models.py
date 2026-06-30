@@ -85,6 +85,8 @@ class TemplateField:
     ifc_source: str = ""
     aggregate: str = "count"   # "count" | "first" | "all" — strategy for custom fields
     group_label: str = ""  # localized display name; falls back to group when empty
+    source_type: str = "computed"  # "external_metadata"|"ifc_attribute"|"pset_property"|"quantity"|"computed"
+    computed: bool = False
 
 
 @dataclass

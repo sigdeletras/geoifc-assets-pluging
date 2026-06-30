@@ -21,15 +21,75 @@ _log = logging.getLogger("geoifcassets")
 
 _NOT_EXTRACTABLE_MVP: frozenset[str] = frozenset({
     # Geometry — require full mesh processing (expensive, out of scope for MVP)
-    "bbox_width", "bbox_depth", "bbox_height",
-    "footprint_area", "total_length",
+    "bbox_width", "bbox_depth", "bbox_height", "footprint_area",
     # Heuristic — require corpus-level calibration
     "detected_domain", "detected_discipline",
-    "dominant_material",
-    # Composite scores — require all area metrics first
-    "bim_completeness_score", "complexity_index",
-    "objects_per_m2", "volume_per_m2",
 })
+
+# Lookup table: asset-level field → candidate (pset_name, property_name) pairs.
+# Extractor searches IfcProject / IfcSite / IfcBuilding / IfcFacility entities in order.
+_ASSET_PSET_CANDIDATES: dict[str, list[tuple[str, str]]] = {
+    "asset_type": [
+        ("Pset_BuildingCommon", "OccupancyType"),
+        ("Pset_FacilityCommon", "AssetType"),
+        ("Pset_AssetCommon", "Category"),
+    ],
+    "asset_subtype": [
+        ("Pset_BuildingCommon", "OccupancyType"),
+        ("Pset_FacilityCommon", "SubType"),
+        ("Pset_AssetCommon", "Subtype"),
+    ],
+    "intended_use": [
+        ("Pset_BuildingCommon", "IntendedUse"),
+        ("Pset_SpaceCommon", "IntendedUse"),
+        ("Pset_FacilityCommon", "IntendedUse"),
+    ],
+    "lifecycle_stage": [
+        ("Pset_ProjectCommon", "LifeCyclePhase"),
+        ("Pset_BuildingCommon", "ConstructionProjectScope"),
+        ("Pset_AssetCommon", "LifeCyclePhase"),
+    ],
+    "operational_status": [
+        ("Pset_BuildingCommon", "OperatingStatus"),
+        ("Pset_FacilityCommon", "OperationalStatus"),
+        ("Pset_AssetCommon", "OperationalStatus"),
+    ],
+    "owner": [
+        ("Pset_BuildingCommon", "Owner"),
+        ("Pset_FacilityCommon", "Owner"),
+        ("Pset_AssetCommon", "Owner"),
+    ],
+    "operator": [
+        ("Pset_BuildingCommon", "Operator"),
+        ("Pset_FacilityCommon", "Operator"),
+        ("Pset_AssetCommon", "Operator"),
+    ],
+    "maintainer": [
+        ("Pset_BuildingCommon", "Maintainer"),
+        ("Pset_FacilityCommon", "Maintainer"),
+        ("Pset_AssetCommon", "Maintainer"),
+    ],
+    "asset_identifier": [
+        ("Pset_AssetCommon", "AssetIdentifier"),
+        ("Pset_BuildingCommon", "Reference"),
+        ("Pset_FacilityCommon", "Reference"),
+    ],
+    "facility_identifier": [
+        ("Pset_FacilityCommon", "FacilityIdentifier"),
+        ("Pset_BuildingCommon", "BuildingNumber"),
+        ("Pset_AssetCommon", "FacilityIdentifier"),
+    ],
+    "commissioning_date": [
+        ("Pset_FacilityCommon", "CommissioningDate"),
+        ("Pset_AssetCommon", "CommissioningDate"),
+        ("Pset_BuildingCommon", "YearOfConstruction"),
+    ],
+    "expected_service_life": [
+        ("Pset_LifeTime", "ServiceLife"),
+        ("Pset_BuildingCommon", "ServiceLife"),
+        ("Pset_AssetCommon", "ExpectedServiceLife"),
+    ],
+}
 
 
 def extract_fields(ifc_path: str, field_names: list[str]) -> dict[str, Any]:
@@ -222,6 +282,9 @@ class _IfcFieldExtractor:
         buildings = self._ifc.by_type("IfcBuilding")
         if buildings:
             return _str_or_none(getattr(buildings[0], "Name", None))
+        # IFC4X3: IfcBuilding deprecated — fall back to IfcFacility
+        for facility in _by_type_safe(self._ifc, "IfcFacility"):
+            return _str_or_none(getattr(facility, "Name", None))
         return None
 
     def _field_epsg(self) -> str | None:
@@ -283,10 +346,18 @@ class _IfcFieldExtractor:
         return self._count("IfcSite")
 
     def _field_building_count(self) -> int:
-        return self._count("IfcBuilding")
+        count = self._count("IfcBuilding")
+        if count == 0:
+            # IFC4X3: IfcBuilding deprecated — count IfcFacility instead
+            count = len(_by_type_safe(self._ifc, "IfcFacility"))
+        return count
 
     def _field_storey_count(self) -> int:
-        return self._count("IfcBuildingStorey")
+        count = self._count("IfcBuildingStorey")
+        if count == 0:
+            # IFC4X3: IfcBuildingStorey deprecated — count IfcFacilityPart instead
+            count = len(_by_type_safe(self._ifc, "IfcFacilityPart"))
+        return count
 
     def _field_space_count(self) -> int:
         return self._count("IfcSpace")
@@ -344,10 +415,21 @@ class _IfcFieldExtractor:
     def _field_net_volume(self) -> float | None:
         return _sum_volume_from_qto(self._ifc, "IfcSpace", ("NetVolume",))
 
+    def _field_total_length(self) -> float | None:
+        return _sum_length_from_qto(self._ifc)
+
     # ── Materials ─────────────────────────────────────────────────────────────
 
     def _field_material_count(self) -> int:
         return self._count("IfcMaterial")
+
+    def _field_dominant_material(self) -> str | None:
+        counts: dict[str, int] = {}
+        for mat in self._ifc.by_type("IfcMaterial"):
+            name = _str_or_none(getattr(mat, "Name", None))
+            if name:
+                counts[name] = counts.get(name, 0) + 1
+        return max(counts, key=lambda k: counts[k]) if counts else None
 
     # ── BIM Quality ───────────────────────────────────────────────────────────
 
@@ -411,6 +493,197 @@ class _IfcFieldExtractor:
         with_qto = sum(1 for e in elements if _has_qto(e))
         return round(with_qto / len(elements) * 100, 1)
 
+    def _field_bim_completeness_score(self) -> float:
+        geom = self.get("geometry_completion_pct") or 0.0
+        prop = self.get("property_completion_pct") or 0.0
+        qty = self.get("quantity_completion_pct") or 0.0
+        has_cls = 10.0 if self.get("has_classifications") else 0.0
+        has_mat = 10.0 if self.get("has_materials") else 0.0
+        score = geom * 0.3 + prop * 0.3 + qty * 0.2 + has_cls + has_mat
+        return round(min(score, 100.0), 1)
+
+    def _field_pct_objects_with_psets(self) -> float | None:
+        objects = self._ifc.by_type("IfcObject")
+        if not objects:
+            return None
+        with_psets = sum(
+            1 for o in objects
+            if any(
+                rel.is_a("IfcRelDefinesByProperties")
+                and rel.RelatingPropertyDefinition.is_a("IfcPropertySet")
+                for rel in (getattr(o, "IsDefinedBy", []) or [])
+            )
+        )
+        return round(with_psets / len(objects) * 100, 1)
+
+    def _field_pct_objects_with_classification(self) -> float | None:
+        objects = self._ifc.by_type("IfcObject")
+        if not objects:
+            return None
+        obj_ids = {id(o) for o in objects}
+        classified: set[int] = set()
+        for rel in _by_type_safe(self._ifc, "IfcRelAssociatesClassification"):
+            for obj in (getattr(rel, "RelatedObjects", []) or []):
+                if id(obj) in obj_ids:
+                    classified.add(id(obj))
+        return round(len(classified) / len(objects) * 100, 1)
+
+    def _field_pct_objects_with_material(self) -> float | None:
+        objects = self._ifc.by_type("IfcObject")
+        if not objects:
+            return None
+        obj_ids = {id(o) for o in objects}
+        with_mat: set[int] = set()
+        for rel in _by_type_safe(self._ifc, "IfcRelAssociatesMaterial"):
+            for obj in (getattr(rel, "RelatedObjects", []) or []):
+                if id(obj) in obj_ids:
+                    with_mat.add(id(obj))
+        return round(len(with_mat) / len(objects) * 100, 1)
+
+    def _field_pct_objects_with_manufacturer(self) -> float | None:
+        return self._pct_objects_with_pset_prop(
+            pset_names=[],
+            prop_names=["Manufacturer", "ManufacturerName"],
+        )
+
+    def _field_pct_objects_with_asset_tag(self) -> float | None:
+        objects = self._ifc.by_type("IfcObject")
+        if not objects:
+            return None
+        with_tag = sum(
+            1 for o in objects
+            if _str_or_none(getattr(o, "Tag", None)) is not None
+        )
+        return round(with_tag / len(objects) * 100, 1)
+
+    def _field_pct_objects_with_serial_number(self) -> float | None:
+        return self._pct_objects_with_pset_prop(
+            pset_names=[],
+            prop_names=["SerialNumber", "Serial"],
+        )
+
+    def _field_pct_objects_with_documents(self) -> float | None:
+        objects = self._ifc.by_type("IfcObject")
+        if not objects:
+            return None
+        obj_ids = {id(o) for o in objects}
+        with_doc: set[int] = set()
+        for rel in _by_type_safe(self._ifc, "IfcRelAssociatesDocument"):
+            for obj in (getattr(rel, "RelatedObjects", []) or []):
+                if id(obj) in obj_ids:
+                    with_doc.add(id(obj))
+        return round(len(with_doc) / len(objects) * 100, 1)
+
+    def _pct_objects_with_pset_prop(
+        self,
+        pset_names: list[str],
+        prop_names: list[str],
+    ) -> float | None:
+        """% of IfcObject entities having any of prop_names in a PropertySet.
+
+        If pset_names is empty, all PropertySets are searched.
+        """
+        objects = self._ifc.by_type("IfcObject")
+        if not objects:
+            return None
+        count = sum(
+            1 for o in objects
+            if _object_has_pset_prop(o, pset_names, prop_names)
+        )
+        return round(count / len(objects) * 100, 1)
+
+    # ── Asset ─────────────────────────────────────────────────────────────────
+
+    def _search_asset_pset(self, candidates: list[tuple[str, str]]) -> str | None:
+        """Search Psets on project/site/building/facility-level entities."""
+        for etype in ("IfcProject", "IfcSite", "IfcBuilding"):
+            for ent in self._ifc.by_type(etype):
+                for pset_name, prop_name in candidates:
+                    val = _read_pset_prop(ent, pset_name, prop_name)
+                    if val is not None:
+                        return str(val)
+        for ent in _by_type_safe(self._ifc, "IfcFacility"):
+            for pset_name, prop_name in candidates:
+                val = _read_pset_prop(ent, pset_name, prop_name)
+                if val is not None:
+                    return str(val)
+        return None
+
+    def _field_asset_type(self) -> str | None:
+        return self._search_asset_pset(_ASSET_PSET_CANDIDATES["asset_type"])
+
+    def _field_asset_subtype(self) -> str | None:
+        return self._search_asset_pset(_ASSET_PSET_CANDIDATES["asset_subtype"])
+
+    def _field_intended_use(self) -> str | None:
+        return self._search_asset_pset(_ASSET_PSET_CANDIDATES["intended_use"])
+
+    def _field_lifecycle_stage(self) -> str | None:
+        return self._search_asset_pset(_ASSET_PSET_CANDIDATES["lifecycle_stage"])
+
+    def _field_operational_status(self) -> str | None:
+        return self._search_asset_pset(_ASSET_PSET_CANDIDATES["operational_status"])
+
+    def _field_owner(self) -> str | None:
+        return self._search_asset_pset(_ASSET_PSET_CANDIDATES["owner"])
+
+    def _field_operator(self) -> str | None:
+        return self._search_asset_pset(_ASSET_PSET_CANDIDATES["operator"])
+
+    def _field_maintainer(self) -> str | None:
+        return self._search_asset_pset(_ASSET_PSET_CANDIDATES["maintainer"])
+
+    def _field_asset_identifier(self) -> str | None:
+        return self._search_asset_pset(_ASSET_PSET_CANDIDATES["asset_identifier"])
+
+    def _field_facility_identifier(self) -> str | None:
+        return self._search_asset_pset(_ASSET_PSET_CANDIDATES["facility_identifier"])
+
+    def _field_commissioning_date(self) -> str | None:
+        return self._search_asset_pset(_ASSET_PSET_CANDIDATES["commissioning_date"])
+
+    def _field_expected_service_life(self) -> str | None:
+        return self._search_asset_pset(_ASSET_PSET_CANDIDATES["expected_service_life"])
+
+    # ── Classification ────────────────────────────────────────────────────────
+
+    def _primary_classification(self) -> tuple[str | None, str | None, str | None]:
+        if "_primary_cls" not in self._cache:
+            self._cache["_primary_cls"] = self._compute_primary_classification()
+        return self._cache["_primary_cls"]
+
+    def _compute_primary_classification(self) -> tuple[str | None, str | None, str | None]:
+        for ref in _by_type_safe(self._ifc, "IfcClassificationReference"):
+            identification = _str_or_none(
+                getattr(ref, "Identification", None) or getattr(ref, "ItemReference", None)
+            )
+            name = _str_or_none(getattr(ref, "Name", None))
+            source = getattr(ref, "ReferencedSource", None)
+            system: str | None = None
+            if source is not None and hasattr(source, "is_a"):
+                if source.is_a("IfcClassification"):
+                    system = _str_or_none(getattr(source, "Name", None))
+                elif source.is_a("IfcClassificationReference"):
+                    root = getattr(source, "ReferencedSource", None)
+                    if root is not None and hasattr(root, "is_a") and root.is_a("IfcClassification"):
+                        system = _str_or_none(getattr(root, "Name", None))
+            if identification or name or system:
+                return system, identification, name
+        for cls in self._ifc.by_type("IfcClassification"):
+            system = _str_or_none(getattr(cls, "Name", None))
+            if system:
+                return system, None, None
+        return None, None, None
+
+    def _field_primary_classification_system(self) -> str | None:
+        return self._primary_classification()[0]
+
+    def _field_primary_classification_code(self) -> str | None:
+        return self._primary_classification()[1]
+
+    def _field_primary_classification_name(self) -> str | None:
+        return self._primary_classification()[2]
+
     # ── Indicators ────────────────────────────────────────────────────────────
 
     def _field_objects_per_storey(self) -> float | None:
@@ -427,10 +700,31 @@ class _IfcFieldExtractor:
             return None
         return round(objects / spaces, 1)
 
+    def _field_complexity_index(self) -> float | None:
+        storeys = self.get("storey_count")
+        entities = self.get("total_entities")
+        if not storeys or not entities:
+            return None
+        return round(entities / storeys, 1)
+
+    def _field_objects_per_m2(self) -> float | None:
+        objects = self.get("total_objects")
+        area = self.get("gross_floor_area")
+        if not objects or not area:
+            return None
+        return round(objects / area, 4)
+
+    def _field_volume_per_m2(self) -> float | None:
+        volume = self.get("gross_volume")
+        area = self.get("gross_floor_area")
+        if not volume or not area:
+            return None
+        return round(volume / area, 4)
+
     # ── Extraction metadata ───────────────────────────────────────────────────
 
     def _field_extractor_version(self) -> str:
-        return "1.0.0"
+        return "1.1.0"
 
     def _field_extraction_datetime(self) -> str:
         import datetime  # noqa: PLC0415
@@ -533,3 +827,65 @@ def _sum_volume_from_qto(
                     except (AttributeError, TypeError, ValueError):
                         pass
     return round(total, 3) if found else None
+
+
+def _sum_length_from_qto(ifc: Any) -> float | None:
+    """Sum IfcQuantityLength named Length/GrossLength/NetLength across all IfcElement entities."""
+    total = 0.0
+    found = False
+    for element in ifc.by_type("IfcElement"):
+        for rel in (getattr(element, "IsDefinedBy", []) or []):
+            if not rel.is_a("IfcRelDefinesByProperties"):
+                continue
+            pdef = rel.RelatingPropertyDefinition
+            if not pdef.is_a("IfcElementQuantity"):
+                continue
+            for qty in (getattr(pdef, "Quantities", []) or []):
+                if qty.Name in ("Length", "GrossLength", "NetLength") and qty.is_a("IfcQuantityLength"):
+                    try:
+                        total += float(qty.LengthValue)
+                        found = True
+                    except (AttributeError, TypeError, ValueError):
+                        pass
+    return round(total, 3) if found else None
+
+
+def _read_pset_prop(entity: Any, pset_name: str, prop_name: str) -> Any:
+    """Return the value of prop_name inside pset_name on entity, or None."""
+    for rel in (getattr(entity, "IsDefinedBy", []) or []):
+        if not rel.is_a("IfcRelDefinesByProperties"):
+            continue
+        pdef = rel.RelatingPropertyDefinition
+        if not pdef.is_a("IfcPropertySet") or pdef.Name != pset_name:
+            continue
+        for prop in (getattr(pdef, "HasProperties", []) or []):
+            if prop.Name == prop_name and prop.is_a("IfcPropertySingleValue"):
+                nv = getattr(prop, "NominalValue", None)
+                if nv is not None:
+                    try:
+                        return nv.wrappedValue
+                    except AttributeError:
+                        return str(nv)
+    return None
+
+
+def _object_has_pset_prop(
+    obj: Any,
+    pset_names: list[str],
+    prop_names: list[str],
+) -> bool:
+    """True when obj has any of prop_names in a PropertySet (optionally filtered by pset_names)."""
+    for rel in (getattr(obj, "IsDefinedBy", []) or []):
+        if not rel.is_a("IfcRelDefinesByProperties"):
+            continue
+        pdef = rel.RelatingPropertyDefinition
+        if not pdef.is_a("IfcPropertySet"):
+            continue
+        if pset_names and pdef.Name not in pset_names:
+            continue
+        for prop in (getattr(pdef, "HasProperties", []) or []):
+            if prop.Name in prop_names:
+                if prop.is_a("IfcPropertySingleValue"):
+                    return getattr(prop, "NominalValue", None) is not None
+                return True
+    return False

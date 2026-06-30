@@ -32,6 +32,8 @@ _GROUP_ORDER: list[str] = [
     "Model Statistics",
     "Geometry",
     "Materials",
+    "Asset",
+    "Classification",
     "BIM Quality",
     "Indicators",
     "Extraction",
@@ -137,6 +139,8 @@ def _parse_fields(
         description = str(entry.get("description", ""))
         ifc_source = str(entry.get("ifc_source") or "")
         aggregate = str(entry.get("aggregate", "count"))
+        source_type = str(entry.get("source_type", "computed"))
+        computed = bool(entry.get("computed", False))
 
         # Apply locale overrides from external i18n dicts
         loc_field = i18n_fields.get(name, {})
@@ -154,6 +158,8 @@ def _parse_fields(
             ifc_source=ifc_source,
             aggregate=aggregate,
             group_label=group_label,
+            source_type=source_type,
+            computed=computed,
         ))
     return result
 

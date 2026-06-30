@@ -553,11 +553,11 @@ class GeoIfcAssetsPlugin:
             return "en"
 
     def _load_default_template(self) -> None:
-        """Load ifc_core_catalog as the fixed core template and set it on the dock."""
+        """Load ifc_core_catalog_v2 as the fixed core template and set it on the dock."""
         from geoifcassets.core.template_loader import load_builtin_template  # noqa: PLC0415
 
         try:
-            template = load_builtin_template("ifc_core_catalog", locale=self._qgis_locale())
+            template = load_builtin_template("ifc_core_catalog_v2", locale=self._qgis_locale())
         except (ValueError, FileNotFoundError) as exc:
             self._logger.warning("Could not load core template", error=str(exc))
             return

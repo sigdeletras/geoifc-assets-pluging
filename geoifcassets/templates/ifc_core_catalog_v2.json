@@ -1,0 +1,1488 @@
+{
+  "template_name": "ifc_core_catalog_v2",
+  "extractor_version": "1.1.0",
+  "description": "Extended template — one CSV row per IFC file with external metadata, IFC attributes, Quantity Sets, selected asset-level Property Sets, classifications and computed quality indicators.",
+  "metadata": {
+    "author": "GeoInnova",
+    "contact": "patricio.soriano@geoinnova.org",
+    "created_at": "2026-06-26",
+    "updated_at": "2026-06-30",
+    "template_version": "2.0.0",
+    "min_extractor_version": "1.1.0",
+    "ifc_versions": [
+      "IFC2X3",
+      "IFC4",
+      "IFC4X3"
+    ],
+    "language": "en",
+    "license": "proprietary",
+    "tags": [
+      "Asset",
+      "BIM",
+      "Classification",
+      "GIS",
+      "IFC",
+      "PSET",
+      "QGIS",
+      "QTO",
+      "catalog"
+    ]
+  },
+  "fields": [
+    {
+      "name": "file_name",
+      "enabled": true,
+      "group": "File",
+      "alias": "File name",
+      "computed": false,
+      "ifc_source": null,
+      "description": "IFC filename without path",
+      "source_type": "external_metadata"
+    },
+    {
+      "name": "file_path",
+      "enabled": true,
+      "group": "File",
+      "alias": "File path",
+      "computed": false,
+      "ifc_source": null,
+      "description": "Full path to the IFC file",
+      "source_type": "external_metadata"
+    },
+    {
+      "name": "document_format",
+      "enabled": true,
+      "group": "File",
+      "alias": "Document format",
+      "computed": false,
+      "ifc_source": null,
+      "description": "Always IFC",
+      "source_type": "external_metadata"
+    },
+    {
+      "name": "file_extension",
+      "enabled": true,
+      "group": "File",
+      "alias": "File extension",
+      "computed": false,
+      "ifc_source": null,
+      "description": "File extension (.ifc, .ifczip, ...)",
+      "source_type": "external_metadata"
+    },
+    {
+      "name": "file_size_mb",
+      "enabled": true,
+      "group": "File",
+      "alias": "File size (MB)",
+      "computed": false,
+      "ifc_source": null,
+      "description": "File size in megabytes",
+      "source_type": "external_metadata"
+    },
+    {
+      "name": "file_hash",
+      "enabled": true,
+      "group": "File",
+      "alias": "File hash (MD5)",
+      "computed": true,
+      "ifc_source": null,
+      "description": "MD5 of the first 64 KB",
+      "source_type": "computed"
+    },
+    {
+      "name": "file_created",
+      "enabled": true,
+      "group": "File",
+      "alias": "File created",
+      "computed": false,
+      "ifc_source": null,
+      "description": "Filesystem creation timestamp",
+      "source_type": "external_metadata"
+    },
+    {
+      "name": "file_modified",
+      "enabled": true,
+      "group": "File",
+      "alias": "File modified",
+      "computed": false,
+      "ifc_source": null,
+      "description": "Filesystem last-modified timestamp",
+      "source_type": "external_metadata"
+    },
+    {
+      "name": "ifc_version",
+      "enabled": true,
+      "group": "IFC Header",
+      "alias": "IFC version",
+      "computed": false,
+      "ifc_source": "FILE_DESCRIPTION",
+      "description": "IFC schema version string (e.g. IFC4)",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "schema_identifier",
+      "enabled": true,
+      "group": "IFC Header",
+      "alias": "Schema identifier",
+      "computed": false,
+      "ifc_source": "FILE_SCHEMA",
+      "description": "Full schema identifier from the header",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "file_description",
+      "enabled": true,
+      "group": "IFC Header",
+      "alias": "File description",
+      "computed": false,
+      "ifc_source": "FILE_DESCRIPTION",
+      "description": "Description from FILE_DESCRIPTION header",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "file_timestamp",
+      "enabled": true,
+      "group": "IFC Header",
+      "alias": "File timestamp",
+      "computed": false,
+      "ifc_source": "FILE_NAME.time_stamp",
+      "description": "Timestamp from FILE_NAME header",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "author",
+      "enabled": true,
+      "group": "IFC Header",
+      "alias": "Author",
+      "computed": false,
+      "ifc_source": "FILE_NAME.author",
+      "description": "Author(s) from FILE_NAME header",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "organization",
+      "enabled": true,
+      "group": "IFC Header",
+      "alias": "Organization",
+      "computed": false,
+      "ifc_source": "FILE_NAME.organization",
+      "description": "Organization from FILE_NAME header",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "originating_system",
+      "enabled": true,
+      "group": "IFC Header",
+      "alias": "Originating system",
+      "computed": false,
+      "ifc_source": "FILE_NAME.originating_system",
+      "description": "Authoring tool / originating system",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "preprocessor_version",
+      "enabled": true,
+      "group": "IFC Header",
+      "alias": "Preprocessor version",
+      "computed": false,
+      "ifc_source": "FILE_NAME.preprocessor_version",
+      "description": "Preprocessor/exporter version",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "authorization",
+      "enabled": true,
+      "group": "IFC Header",
+      "alias": "Authorization",
+      "computed": false,
+      "ifc_source": "FILE_NAME.authorization",
+      "description": "Authorization string from FILE_NAME",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "project_name",
+      "enabled": true,
+      "group": "Project",
+      "alias": "Project name",
+      "computed": false,
+      "ifc_source": "IfcProject.Name",
+      "description": "IfcProject.Name",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "project_globalid",
+      "enabled": true,
+      "group": "Project",
+      "alias": "Project GlobalId",
+      "computed": false,
+      "ifc_source": "IfcProject.GlobalId",
+      "description": "IfcProject.GlobalId",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "project_description",
+      "enabled": true,
+      "group": "Project",
+      "alias": "Project description",
+      "computed": false,
+      "ifc_source": "IfcProject.Description",
+      "description": "IfcProject.Description",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "project_phase",
+      "enabled": true,
+      "group": "Project",
+      "alias": "Project phase",
+      "computed": false,
+      "ifc_source": "IfcProject.Phase",
+      "description": "IfcProject.Phase",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "site_name",
+      "enabled": true,
+      "group": "Location",
+      "alias": "Site name",
+      "computed": false,
+      "ifc_source": "IfcSite.Name",
+      "description": "IfcSite.Name",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "building_name",
+      "enabled": true,
+      "group": "Location",
+      "alias": "Building name",
+      "computed": false,
+      "ifc_source": "IfcBuilding.Name",
+      "ifc4x3_note": "IfcBuilding deprecated in IFC4X3; extractor falls back to IfcFacility",
+      "description": "IfcBuilding.Name",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "epsg",
+      "enabled": true,
+      "group": "Location",
+      "alias": "EPSG code",
+      "computed": true,
+      "ifc_source": "IfcCoordinateReferenceSystem",
+      "min_ifc_version": "IFC4",
+      "description": "EPSG code parsed from IfcCoordinateReferenceSystem",
+      "source_type": "computed"
+    },
+    {
+      "name": "crs_name",
+      "enabled": true,
+      "group": "Location",
+      "alias": "CRS name",
+      "computed": false,
+      "ifc_source": "IfcCoordinateReferenceSystem.Name",
+      "min_ifc_version": "IFC4",
+      "description": "IfcCoordinateReferenceSystem.Name",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "latitude",
+      "enabled": true,
+      "group": "Location",
+      "alias": "Latitude (deg)",
+      "computed": true,
+      "ifc_source": "IfcSite.RefLatitude",
+      "description": "IfcSite.RefLatitude converted to decimal degrees",
+      "source_type": "computed"
+    },
+    {
+      "name": "longitude",
+      "enabled": true,
+      "group": "Location",
+      "alias": "Longitude (deg)",
+      "computed": true,
+      "ifc_source": "IfcSite.RefLongitude",
+      "description": "IfcSite.RefLongitude converted to decimal degrees",
+      "source_type": "computed"
+    },
+    {
+      "name": "easting",
+      "enabled": true,
+      "group": "Location",
+      "alias": "Easting (m)",
+      "computed": false,
+      "ifc_source": "IfcMapConversion.Eastings",
+      "min_ifc_version": "IFC4",
+      "description": "IfcMapConversion.Eastings",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "northing",
+      "enabled": true,
+      "group": "Location",
+      "alias": "Northing (m)",
+      "computed": false,
+      "ifc_source": "IfcMapConversion.Northings",
+      "min_ifc_version": "IFC4",
+      "description": "IfcMapConversion.Northings",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "elevation",
+      "enabled": true,
+      "group": "Location",
+      "alias": "Elevation (m)",
+      "computed": false,
+      "ifc_source": "IfcMapConversion.OrthogonalHeight",
+      "min_ifc_version": "IFC4",
+      "description": "IfcMapConversion.OrthogonalHeight",
+      "source_type": "ifc_attribute"
+    },
+    {
+      "name": "is_georeferenced",
+      "enabled": true,
+      "group": "Location",
+      "alias": "Is georeferenced",
+      "computed": true,
+      "ifc_source": "IfcMapConversion",
+      "min_ifc_version": "IFC4",
+      "description": "True when IfcMapConversion is present",
+      "source_type": "computed"
+    },
+    {
+      "name": "detected_domain",
+      "enabled": true,
+      "group": "Domain",
+      "alias": "Detected domain",
+      "computed": true,
+      "ifc_source": null,
+      "description": "Heuristic domain (Building, Infrastructure, MEP...)",
+      "source_type": "computed"
+    },
+    {
+      "name": "detected_discipline",
+      "enabled": true,
+      "group": "Domain",
+      "alias": "Detected discipline",
+      "computed": true,
+      "ifc_source": null,
+      "description": "Heuristic discipline from class composition",
+      "source_type": "computed"
+    },
+    {
+      "name": "site_count",
+      "enabled": true,
+      "group": "Spatial Structure",
+      "alias": "Site count",
+      "computed": true,
+      "ifc_source": "IfcSite",
+      "description": "Number of IfcSite entities",
+      "source_type": "computed"
+    },
+    {
+      "name": "building_count",
+      "enabled": true,
+      "group": "Spatial Structure",
+      "alias": "Building count",
+      "computed": true,
+      "ifc_source": "IfcBuilding",
+      "ifc4x3_note": "IfcBuilding deprecated in IFC4X3; count includes IfcFacility subtypes",
+      "description": "Number of IfcBuilding entities",
+      "source_type": "computed"
+    },
+    {
+      "name": "storey_count",
+      "enabled": true,
+      "group": "Spatial Structure",
+      "alias": "Storey count",
+      "computed": true,
+      "ifc_source": "IfcBuildingStorey",
+      "ifc4x3_note": "IfcBuildingStorey deprecated in IFC4X3; extractor falls back to IfcFacilityPart",
+      "description": "Number of IfcBuildingStorey entities",
+      "source_type": "computed"
+    },
+    {
+      "name": "space_count",
+      "enabled": true,
+      "group": "Spatial Structure",
+      "alias": "Space count",
+      "computed": true,
+      "ifc_source": "IfcSpace",
+      "description": "Number of IfcSpace entities",
+      "source_type": "computed"
+    },
+    {
+      "name": "zone_count",
+      "enabled": true,
+      "group": "Spatial Structure",
+      "alias": "Zone count",
+      "computed": true,
+      "ifc_source": "IfcZone",
+      "description": "Number of IfcZone entities",
+      "source_type": "computed"
+    },
+    {
+      "name": "system_count",
+      "enabled": true,
+      "group": "Spatial Structure",
+      "alias": "System count",
+      "computed": true,
+      "ifc_source": "IfcSystem",
+      "description": "Number of IfcSystem entities",
+      "source_type": "computed"
+    },
+    {
+      "name": "total_entities",
+      "enabled": true,
+      "group": "Model Statistics",
+      "alias": "Total entities",
+      "computed": true,
+      "ifc_source": null,
+      "description": "Total entity count in the IFC file",
+      "source_type": "computed"
+    },
+    {
+      "name": "total_objects",
+      "enabled": true,
+      "group": "Model Statistics",
+      "alias": "Total objects",
+      "computed": true,
+      "ifc_source": "IfcObject",
+      "description": "Number of IfcObject entities",
+      "source_type": "computed"
+    },
+    {
+      "name": "total_physical_elements",
+      "enabled": true,
+      "group": "Model Statistics",
+      "alias": "Total physical elements",
+      "computed": true,
+      "ifc_source": "IfcElement",
+      "description": "Number of IfcElement entities",
+      "source_type": "computed"
+    },
+    {
+      "name": "distinct_ifc_classes",
+      "enabled": true,
+      "group": "Model Statistics",
+      "alias": "Distinct IFC classes",
+      "computed": true,
+      "ifc_source": null,
+      "description": "Number of distinct entity types present",
+      "source_type": "computed"
+    },
+    {
+      "name": "bbox_width",
+      "enabled": true,
+      "group": "Geometry",
+      "alias": "Bounding box width (m)",
+      "computed": true,
+      "ifc_source": "IfcShapeRepresentation",
+      "description": "Model bounding box width",
+      "source_type": "computed"
+    },
+    {
+      "name": "bbox_depth",
+      "enabled": true,
+      "group": "Geometry",
+      "alias": "Bounding box depth (m)",
+      "computed": true,
+      "ifc_source": "IfcShapeRepresentation",
+      "description": "Model bounding box depth",
+      "source_type": "computed"
+    },
+    {
+      "name": "bbox_height",
+      "enabled": true,
+      "group": "Geometry",
+      "alias": "Bounding box height (m)",
+      "computed": true,
+      "ifc_source": "IfcShapeRepresentation",
+      "description": "Model bounding box height",
+      "source_type": "computed"
+    },
+    {
+      "name": "footprint_area",
+      "enabled": true,
+      "group": "Geometry",
+      "alias": "Footprint area (m2)",
+      "computed": true,
+      "ifc_source": "IfcShapeRepresentation",
+      "description": "Projected footprint area",
+      "source_type": "computed"
+    },
+    {
+      "name": "gross_floor_area",
+      "enabled": true,
+      "group": "Geometry",
+      "alias": "Gross floor area (m2)",
+      "computed": true,
+      "ifc_source": "IfcElementQuantity.GrossFloorArea",
+      "description": "Sum of GrossFloorArea from QuantitySets",
+      "source_type": "quantity"
+    },
+    {
+      "name": "net_floor_area",
+      "enabled": true,
+      "group": "Geometry",
+      "alias": "Net floor area (m2)",
+      "computed": true,
+      "ifc_source": "IfcElementQuantity.NetFloorArea",
+      "description": "Sum of NetFloorArea from QuantitySets",
+      "source_type": "quantity"
+    },
+    {
+      "name": "gross_volume",
+      "enabled": true,
+      "group": "Geometry",
+      "alias": "Gross volume (m3)",
+      "computed": true,
+      "ifc_source": "IfcElementQuantity.GrossVolume",
+      "description": "Total gross volume from QuantitySets",
+      "source_type": "quantity"
+    },
+    {
+      "name": "net_volume",
+      "enabled": true,
+      "group": "Geometry",
+      "alias": "Net volume (m3)",
+      "computed": true,
+      "ifc_source": "IfcElementQuantity.NetVolume",
+      "description": "Total net volume from QuantitySets",
+      "source_type": "quantity"
+    },
+    {
+      "name": "total_length",
+      "enabled": true,
+      "group": "Geometry",
+      "alias": "Total length (m)",
+      "computed": true,
+      "ifc_source": "IfcElementQuantity.Length",
+      "description": "Sum of all linear element lengths",
+      "source_type": "quantity"
+    },
+    {
+      "name": "material_count",
+      "enabled": true,
+      "group": "Materials",
+      "alias": "Material count",
+      "computed": true,
+      "ifc_source": "IfcMaterial",
+      "description": "Number of IfcMaterial entities",
+      "source_type": "computed"
+    },
+    {
+      "name": "dominant_material",
+      "enabled": true,
+      "group": "Materials",
+      "alias": "Dominant material",
+      "computed": true,
+      "ifc_source": "IfcMaterial.Name",
+      "description": "Most frequently referenced material name",
+      "source_type": "computed"
+    },
+    {
+      "name": "propertyset_count",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "PropertySet count",
+      "computed": true,
+      "ifc_source": "IfcPropertySet",
+      "description": "Number of IfcPropertySet entities",
+      "source_type": "computed"
+    },
+    {
+      "name": "quantityset_count",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "QuantitySet count",
+      "computed": true,
+      "ifc_source": "IfcElementQuantity",
+      "description": "Number of IfcElementQuantity entities",
+      "source_type": "quantity"
+    },
+    {
+      "name": "classification_count",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Classification count",
+      "computed": true,
+      "ifc_source": "IfcClassification",
+      "description": "Number of IfcClassification entities",
+      "source_type": "computed"
+    },
+    {
+      "name": "has_geometry",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Has geometry",
+      "computed": true,
+      "ifc_source": "IfcShapeRepresentation",
+      "description": "True when at least one element has geometry",
+      "source_type": "computed"
+    },
+    {
+      "name": "has_quantities",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Has quantities",
+      "computed": true,
+      "ifc_source": "IfcElementQuantity",
+      "description": "True when at least one QuantitySet exists",
+      "source_type": "quantity"
+    },
+    {
+      "name": "has_property_sets",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Has property sets",
+      "computed": true,
+      "ifc_source": "IfcPropertySet",
+      "description": "True when at least one PropertySet exists",
+      "source_type": "computed"
+    },
+    {
+      "name": "has_materials",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Has materials",
+      "computed": true,
+      "ifc_source": "IfcMaterial",
+      "description": "True when at least one IfcMaterial exists",
+      "source_type": "computed"
+    },
+    {
+      "name": "has_classifications",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Has classifications",
+      "computed": true,
+      "ifc_source": "IfcClassification",
+      "description": "True when at least one IfcClassification exists",
+      "source_type": "computed"
+    },
+    {
+      "name": "has_spatial_structure",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Has spatial structure",
+      "computed": true,
+      "ifc_source": "IfcBuildingStorey | IfcSpace",
+      "description": "True when the model has storeys or spaces",
+      "source_type": "computed"
+    },
+    {
+      "name": "geometry_completion_pct",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Geometry completion %",
+      "computed": true,
+      "ifc_source": "IfcShapeRepresentation",
+      "description": "% of IfcElement with geometry representation",
+      "source_type": "computed"
+    },
+    {
+      "name": "property_completion_pct",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Property completion %",
+      "computed": true,
+      "ifc_source": "IfcRelDefinesByProperties",
+      "description": "% of IfcElement with at least one PropertySet",
+      "source_type": "computed",
+      "entity_base": "IfcElement",
+      "entity_base_note": "Base is IfcElement (physical elements only). See pct_objects_with_psets for IfcObject-based equivalent."
+    },
+    {
+      "name": "quantity_completion_pct",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Quantity completion %",
+      "computed": true,
+      "ifc_source": "IfcElementQuantity",
+      "description": "% of IfcElement with at least one QuantitySet",
+      "source_type": "quantity"
+    },
+    {
+      "name": "bim_completeness_score",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "BIM completeness score",
+      "computed": true,
+      "ifc_source": null,
+      "description": "Composite completeness indicator (0-100)",
+      "source_type": "computed",
+      "formula_note": "Weighted average: geometry_completion_pct*0.3 + property_completion_pct*0.3 + quantity_completion_pct*0.2 + (has_classifications*10) + (has_materials*10). Extractor must implement this formula explicitly."
+    },
+    {
+      "name": "complexity_index",
+      "enabled": true,
+      "group": "Indicators",
+      "alias": "Complexity index",
+      "computed": true,
+      "ifc_source": null,
+      "description": "Entities per storey ratio",
+      "source_type": "computed"
+    },
+    {
+      "name": "objects_per_storey",
+      "enabled": true,
+      "group": "Indicators",
+      "alias": "Objects per storey",
+      "computed": true,
+      "ifc_source": null,
+      "description": "Total objects / storey count",
+      "source_type": "computed"
+    },
+    {
+      "name": "objects_per_space",
+      "enabled": true,
+      "group": "Indicators",
+      "alias": "Objects per space",
+      "computed": true,
+      "ifc_source": null,
+      "description": "Total objects / space count",
+      "source_type": "computed"
+    },
+    {
+      "name": "objects_per_m2",
+      "enabled": true,
+      "group": "Indicators",
+      "alias": "Objects per m2",
+      "computed": true,
+      "ifc_source": null,
+      "description": "Total objects / gross floor area",
+      "source_type": "computed"
+    },
+    {
+      "name": "volume_per_m2",
+      "enabled": true,
+      "group": "Indicators",
+      "alias": "Volume per m2",
+      "computed": true,
+      "ifc_source": null,
+      "description": "Gross volume / gross floor area",
+      "source_type": "computed"
+    },
+    {
+      "name": "extractor_version",
+      "enabled": true,
+      "group": "Extraction",
+      "alias": "Extractor version",
+      "computed": false,
+      "ifc_source": null,
+      "description": "Version of the extraction engine",
+      "source_type": "external_metadata"
+    },
+    {
+      "name": "extraction_datetime",
+      "enabled": true,
+      "group": "Extraction",
+      "alias": "Extraction datetime",
+      "computed": false,
+      "ifc_source": null,
+      "description": "ISO-8601 datetime of the extraction run",
+      "source_type": "external_metadata"
+    },
+    {
+      "name": "extraction_status",
+      "enabled": true,
+      "group": "Extraction",
+      "alias": "Extraction status",
+      "computed": false,
+      "ifc_source": null,
+      "description": "ok or error",
+      "source_type": "external_metadata"
+    },
+    {
+      "name": "extraction_error",
+      "enabled": true,
+      "group": "Extraction",
+      "alias": "Extraction error",
+      "computed": false,
+      "ifc_source": null,
+      "description": "Error message when extraction_status = error",
+      "source_type": "external_metadata"
+    },
+    {
+      "name": "asset_type",
+      "enabled": true,
+      "group": "Asset",
+      "alias": "Asset type",
+      "computed": false,
+      "source_type": "pset_property",
+      "ifc_source": "IfcPropertySet.*",
+      "description": "Type of asset represented by the IFC model, independent of domain",
+      "pset_scope": "asset_level",
+      "pset_lookup_note": "Extractor should search standard IFC Psets first and then common authoring-tool custom Psets."
+    },
+    {
+      "name": "asset_subtype",
+      "enabled": true,
+      "group": "Asset",
+      "alias": "Asset subtype",
+      "computed": false,
+      "source_type": "pset_property",
+      "ifc_source": "IfcPropertySet.*",
+      "description": "More specific subtype of the represented asset",
+      "pset_scope": "asset_level",
+      "pset_lookup_note": "Extractor should search standard IFC Psets first and then common authoring-tool custom Psets."
+    },
+    {
+      "name": "intended_use",
+      "enabled": true,
+      "group": "Asset",
+      "alias": "Intended use",
+      "computed": false,
+      "source_type": "pset_property",
+      "ifc_source": "IfcPropertySet.*",
+      "description": "Intended or functional use of the asset",
+      "pset_scope": "asset_level",
+      "pset_lookup_note": "Extractor should search standard IFC Psets first and then common authoring-tool custom Psets."
+    },
+    {
+      "name": "lifecycle_stage",
+      "enabled": true,
+      "group": "Asset",
+      "alias": "Lifecycle stage",
+      "computed": false,
+      "source_type": "pset_property",
+      "ifc_source": "IfcPropertySet.*",
+      "description": "Lifecycle stage of the asset or model",
+      "pset_scope": "asset_level",
+      "pset_lookup_note": "Extractor should search standard IFC Psets first and then common authoring-tool custom Psets."
+    },
+    {
+      "name": "operational_status",
+      "enabled": true,
+      "group": "Asset",
+      "alias": "Operational status",
+      "computed": false,
+      "source_type": "pset_property",
+      "ifc_source": "IfcPropertySet.*",
+      "description": "Operational status of the asset",
+      "pset_scope": "asset_level",
+      "pset_lookup_note": "Extractor should search standard IFC Psets first and then common authoring-tool custom Psets."
+    },
+    {
+      "name": "owner",
+      "enabled": true,
+      "group": "Asset",
+      "alias": "Owner",
+      "computed": false,
+      "source_type": "pset_property",
+      "ifc_source": "IfcPropertySet.*",
+      "description": "Owner of the asset or facility",
+      "pset_scope": "asset_level",
+      "pset_lookup_note": "Extractor should search standard IFC Psets first and then common authoring-tool custom Psets."
+    },
+    {
+      "name": "operator",
+      "enabled": true,
+      "group": "Asset",
+      "alias": "Operator",
+      "computed": false,
+      "source_type": "pset_property",
+      "ifc_source": "IfcPropertySet.*",
+      "description": "Operator responsible for the asset",
+      "pset_scope": "asset_level",
+      "pset_lookup_note": "Extractor should search standard IFC Psets first and then common authoring-tool custom Psets."
+    },
+    {
+      "name": "maintainer",
+      "enabled": true,
+      "group": "Asset",
+      "alias": "Maintainer",
+      "computed": false,
+      "source_type": "pset_property",
+      "ifc_source": "IfcPropertySet.*",
+      "description": "Party responsible for maintenance",
+      "pset_scope": "asset_level",
+      "pset_lookup_note": "Extractor should search standard IFC Psets first and then common authoring-tool custom Psets."
+    },
+    {
+      "name": "asset_identifier",
+      "enabled": true,
+      "group": "Asset",
+      "alias": "Asset identifier",
+      "computed": false,
+      "source_type": "pset_property",
+      "ifc_source": "IfcPropertySet.*",
+      "description": "Unique identifier of the asset when available",
+      "pset_scope": "asset_level",
+      "pset_lookup_note": "Extractor should search standard IFC Psets first and then common authoring-tool custom Psets."
+    },
+    {
+      "name": "facility_identifier",
+      "enabled": true,
+      "group": "Asset",
+      "alias": "Facility identifier",
+      "computed": false,
+      "source_type": "pset_property",
+      "ifc_source": "IfcPropertySet.*",
+      "description": "Identifier of the facility or infrastructure system when available",
+      "pset_scope": "asset_level",
+      "pset_lookup_note": "Extractor should search standard IFC Psets first and then common authoring-tool custom Psets."
+    },
+    {
+      "name": "commissioning_date",
+      "enabled": true,
+      "group": "Asset",
+      "alias": "Commissioning date",
+      "computed": false,
+      "source_type": "pset_property",
+      "ifc_source": "IfcPropertySet.*",
+      "description": "Date when the asset was commissioned or put into service",
+      "pset_scope": "asset_level",
+      "pset_lookup_note": "Extractor should search standard IFC Psets first and then common authoring-tool custom Psets."
+    },
+    {
+      "name": "expected_service_life",
+      "enabled": true,
+      "group": "Asset",
+      "alias": "Expected service life",
+      "computed": false,
+      "source_type": "pset_property",
+      "ifc_source": "IfcPropertySet.*",
+      "description": "Expected service life of the asset",
+      "pset_scope": "asset_level",
+      "pset_lookup_note": "Extractor should search standard IFC Psets first and then common authoring-tool custom Psets."
+    },
+    {
+      "name": "primary_classification_system",
+      "enabled": true,
+      "group": "Classification",
+      "alias": "Primary classification system",
+      "computed": true,
+      "source_type": "computed",
+      "ifc_source": "IfcClassification | IfcClassificationReference",
+      "description": "Main classification system detected in the IFC model"
+    },
+    {
+      "name": "primary_classification_code",
+      "enabled": true,
+      "group": "Classification",
+      "alias": "Primary classification code",
+      "computed": true,
+      "source_type": "computed",
+      "ifc_source": "IfcClassification | IfcClassificationReference",
+      "description": "Main classification code detected in the IFC model"
+    },
+    {
+      "name": "primary_classification_name",
+      "enabled": true,
+      "group": "Classification",
+      "alias": "Primary classification name",
+      "computed": true,
+      "source_type": "computed",
+      "ifc_source": "IfcClassification | IfcClassificationReference",
+      "description": "Main classification name or title detected in the IFC model"
+    },
+    {
+      "name": "pct_objects_with_psets",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Objects with Psets (%)",
+      "computed": true,
+      "source_type": "computed",
+      "ifc_source": "IfcRelDefinesByProperties",
+      "description": "% of IfcObject entities with at least one PropertySet",
+      "entity_base": "IfcObject"
+    },
+    {
+      "name": "pct_objects_with_classification",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Objects with classification (%)",
+      "computed": true,
+      "source_type": "computed",
+      "ifc_source": "IfcRelAssociatesClassification",
+      "description": "% of IfcObject entities with at least one classification reference",
+      "entity_base": "IfcObject"
+    },
+    {
+      "name": "pct_objects_with_material",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Objects with material (%)",
+      "computed": true,
+      "source_type": "computed",
+      "ifc_source": "IfcRelAssociatesMaterial",
+      "description": "% of IfcObject entities with at least one material association",
+      "entity_base": "IfcObject"
+    },
+    {
+      "name": "pct_objects_with_manufacturer",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Objects with manufacturer (%)",
+      "computed": true,
+      "source_type": "computed",
+      "ifc_source": "IfcRelDefinesByProperties",
+      "description": "% of IfcObject entities with manufacturer information in Psets",
+      "entity_base": "IfcObject",
+      "pset_lookup_note": "Searches Pset_ManufacturerTypeInformation.Manufacturer and equivalent custom Psets."
+    },
+    {
+      "name": "pct_objects_with_asset_tag",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Objects with asset tag (%)",
+      "computed": true,
+      "source_type": "computed",
+      "ifc_source": "IfcRelDefinesByProperties",
+      "description": "% of IfcObject entities with asset tag or asset identifier information",
+      "entity_base": "IfcObject",
+      "pset_lookup_note": "Searches IfcObject.Tag and Pset_AssetInformation.AssetIdentifier."
+    },
+    {
+      "name": "pct_objects_with_serial_number",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Objects with serial number (%)",
+      "computed": true,
+      "source_type": "computed",
+      "ifc_source": "IfcRelDefinesByProperties",
+      "description": "% of IfcObject entities with serial number information",
+      "entity_base": "IfcObject",
+      "pset_lookup_note": "Searches Pset_ManufacturerTypeInformation.SerialNumber and equivalent custom Psets."
+    },
+    {
+      "name": "pct_objects_with_documents",
+      "enabled": true,
+      "group": "BIM Quality",
+      "alias": "Objects with documents (%)",
+      "computed": true,
+      "source_type": "computed",
+      "ifc_source": "IfcRelAssociatesDocument",
+      "description": "% of IfcObject entities with associated documents",
+      "entity_base": "IfcObject"
+    }
+  ],
+  "i18n": {
+    "es": {
+      "groups": {
+        "File": "Archivo",
+        "IFC Header": "Cabecera IFC",
+        "Project": "Proyecto",
+        "Location": "Ubicacion",
+        "Domain": "Dominio",
+        "Spatial Structure": "Estructura espacial",
+        "Model Statistics": "Estadisticas del modelo",
+        "Geometry": "Geometria",
+        "Materials": "Materiales",
+        "BIM Quality": "Calidad BIM",
+        "Indicators": "Indicadores",
+        "Extraction": "Extraccion",
+        "Custom": "Personalizado",
+        "Asset": "Activo",
+        "Classification": "Clasificacion"
+      },
+      "fields": {
+        "file_name": {
+          "alias": "Nombre del archivo",
+          "description": "Nombre del archivo IFC sin ruta"
+        },
+        "file_path": {
+          "alias": "Ruta del archivo",
+          "description": "Ruta completa al archivo IFC"
+        },
+        "document_format": {
+          "alias": "Formato del documento",
+          "description": "Siempre IFC"
+        },
+        "file_extension": {
+          "alias": "Extension del archivo",
+          "description": "Extension del archivo (.ifc, .ifczip, ...)"
+        },
+        "file_size_mb": {
+          "alias": "Tamano del archivo (MB)",
+          "description": "Tamano del archivo en megabytes"
+        },
+        "file_hash": {
+          "alias": "Hash del archivo (MD5)",
+          "description": "MD5 de los primeros 64 KB"
+        },
+        "file_created": {
+          "alias": "Fecha de creacion",
+          "description": "Marca de tiempo de creacion del sistema de archivos"
+        },
+        "file_modified": {
+          "alias": "Fecha de modificacion",
+          "description": "Marca de tiempo de ultima modificacion"
+        },
+        "ifc_version": {
+          "alias": "Version IFC",
+          "description": "Cadena de version del esquema IFC (p.ej. IFC4)"
+        },
+        "schema_identifier": {
+          "alias": "Identificador de esquema",
+          "description": "Identificador completo del esquema en la cabecera"
+        },
+        "file_description": {
+          "alias": "Descripcion del archivo",
+          "description": "Descripcion de la cabecera FILE_DESCRIPTION"
+        },
+        "file_timestamp": {
+          "alias": "Marca de tiempo del archivo",
+          "description": "Marca de tiempo de la cabecera FILE_NAME"
+        },
+        "author": {
+          "alias": "Autor",
+          "description": "Autor(es) de la cabecera FILE_NAME"
+        },
+        "organization": {
+          "alias": "Organizacion",
+          "description": "Organizacion de la cabecera FILE_NAME"
+        },
+        "originating_system": {
+          "alias": "Sistema de origen",
+          "description": "Herramienta BIM / sistema de origen"
+        },
+        "preprocessor_version": {
+          "alias": "Version del preprocesador",
+          "description": "Version del exportador/preprocesador"
+        },
+        "authorization": {
+          "alias": "Autorizacion",
+          "description": "Cadena de autorizacion de FILE_NAME"
+        },
+        "project_name": {
+          "alias": "Nombre del proyecto",
+          "description": "IfcProject.Name"
+        },
+        "project_globalid": {
+          "alias": "GlobalId del proyecto",
+          "description": "IfcProject.GlobalId"
+        },
+        "project_description": {
+          "alias": "Descripcion del proyecto",
+          "description": "IfcProject.Description"
+        },
+        "project_phase": {
+          "alias": "Fase del proyecto",
+          "description": "IfcProject.Phase"
+        },
+        "site_name": {
+          "alias": "Nombre del emplazamiento",
+          "description": "IfcSite.Name"
+        },
+        "building_name": {
+          "alias": "Nombre del edificio",
+          "description": "IfcBuilding.Name"
+        },
+        "epsg": {
+          "alias": "Codigo EPSG",
+          "description": "Codigo EPSG extraido de IfcCoordinateReferenceSystem"
+        },
+        "crs_name": {
+          "alias": "Nombre del SRC",
+          "description": "IfcCoordinateReferenceSystem.Name"
+        },
+        "latitude": {
+          "alias": "Latitud (grados)",
+          "description": "IfcSite.RefLatitude convertida a grados decimales"
+        },
+        "longitude": {
+          "alias": "Longitud (grados)",
+          "description": "IfcSite.RefLongitude convertida a grados decimales"
+        },
+        "easting": {
+          "alias": "Este (m)",
+          "description": "IfcMapConversion.Eastings"
+        },
+        "northing": {
+          "alias": "Norte (m)",
+          "description": "IfcMapConversion.Northings"
+        },
+        "elevation": {
+          "alias": "Elevacion (m)",
+          "description": "IfcMapConversion.OrthogonalHeight"
+        },
+        "is_georeferenced": {
+          "alias": "Esta georreferenciado",
+          "description": "Verdadero cuando existe IfcMapConversion"
+        },
+        "detected_domain": {
+          "alias": "Dominio detectado",
+          "description": "Dominio heuristico (Building, Infrastructure, MEP...)"
+        },
+        "detected_discipline": {
+          "alias": "Disciplina detectada",
+          "description": "Disciplina heuristica segun composicion de clases"
+        },
+        "site_count": {
+          "alias": "Numero de emplazamientos",
+          "description": "Numero de entidades IfcSite"
+        },
+        "building_count": {
+          "alias": "Numero de edificios",
+          "description": "Numero de entidades IfcBuilding"
+        },
+        "storey_count": {
+          "alias": "Numero de plantas",
+          "description": "Numero de entidades IfcBuildingStorey"
+        },
+        "space_count": {
+          "alias": "Numero de espacios",
+          "description": "Numero de entidades IfcSpace"
+        },
+        "zone_count": {
+          "alias": "Numero de zonas",
+          "description": "Numero de entidades IfcZone"
+        },
+        "system_count": {
+          "alias": "Numero de sistemas",
+          "description": "Numero de entidades IfcSystem"
+        },
+        "total_entities": {
+          "alias": "Total de entidades",
+          "description": "Numero total de entidades en el archivo IFC"
+        },
+        "total_objects": {
+          "alias": "Total de objetos",
+          "description": "Numero de entidades IfcObject"
+        },
+        "total_physical_elements": {
+          "alias": "Total de elementos fisicos",
+          "description": "Numero de entidades IfcElement"
+        },
+        "distinct_ifc_classes": {
+          "alias": "Clases IFC distintas",
+          "description": "Numero de tipos de entidad distintos presentes"
+        },
+        "bbox_width": {
+          "alias": "Anchura del encuadre (m)",
+          "description": "Anchura del encuadre del modelo"
+        },
+        "bbox_depth": {
+          "alias": "Profundidad del encuadre (m)",
+          "description": "Profundidad del encuadre del modelo"
+        },
+        "bbox_height": {
+          "alias": "Altura del encuadre (m)",
+          "description": "Altura del encuadre del modelo"
+        },
+        "footprint_area": {
+          "alias": "Area de huella (m2)",
+          "description": "Area de huella proyectada"
+        },
+        "gross_floor_area": {
+          "alias": "Area bruta de planta (m2)",
+          "description": "Suma de GrossFloorArea de los QuantitySet"
+        },
+        "net_floor_area": {
+          "alias": "Area neta de planta (m2)",
+          "description": "Suma de NetFloorArea de los QuantitySet"
+        },
+        "gross_volume": {
+          "alias": "Volumen bruto (m3)",
+          "description": "Volumen bruto total de los QuantitySet"
+        },
+        "net_volume": {
+          "alias": "Volumen neto (m3)",
+          "description": "Volumen neto total de los QuantitySet"
+        },
+        "total_length": {
+          "alias": "Longitud total (m)",
+          "description": "Suma de longitudes de todos los elementos lineales"
+        },
+        "material_count": {
+          "alias": "Numero de materiales",
+          "description": "Numero de entidades IfcMaterial"
+        },
+        "dominant_material": {
+          "alias": "Material dominante",
+          "description": "Nombre del material mas referenciado"
+        },
+        "propertyset_count": {
+          "alias": "Numero de PropertySet",
+          "description": "Numero de entidades IfcPropertySet"
+        },
+        "quantityset_count": {
+          "alias": "Numero de QuantitySet",
+          "description": "Numero de entidades IfcElementQuantity"
+        },
+        "classification_count": {
+          "alias": "Numero de clasificaciones",
+          "description": "Numero de entidades IfcClassification"
+        },
+        "has_geometry": {
+          "alias": "Tiene geometria",
+          "description": "Verdadero cuando al menos un elemento tiene geometria"
+        },
+        "has_quantities": {
+          "alias": "Tiene cantidades",
+          "description": "Verdadero cuando existe al menos un QuantitySet"
+        },
+        "has_property_sets": {
+          "alias": "Tiene PropertySet",
+          "description": "Verdadero cuando existe al menos un PropertySet"
+        },
+        "has_materials": {
+          "alias": "Tiene materiales",
+          "description": "Verdadero cuando existe al menos un IfcMaterial"
+        },
+        "has_classifications": {
+          "alias": "Tiene clasificaciones",
+          "description": "Verdadero cuando existe al menos una IfcClassification"
+        },
+        "has_spatial_structure": {
+          "alias": "Tiene estructura espacial",
+          "description": "Verdadero cuando el modelo tiene plantas o espacios"
+        },
+        "geometry_completion_pct": {
+          "alias": "Completitud de geometria %",
+          "description": "% de IfcElement con representacion geometrica"
+        },
+        "property_completion_pct": {
+          "alias": "Completitud de PropertySet %",
+          "description": "% de IfcElement con al menos un PropertySet"
+        },
+        "quantity_completion_pct": {
+          "alias": "Completitud de QuantitySet %",
+          "description": "% de IfcElement con al menos un QuantitySet"
+        },
+        "bim_completeness_score": {
+          "alias": "Puntuacion de completitud BIM",
+          "description": "Indicador compuesto de completitud (0-100)"
+        },
+        "complexity_index": {
+          "alias": "Indice de complejidad",
+          "description": "Ratio entidades/planta"
+        },
+        "objects_per_storey": {
+          "alias": "Objetos por planta",
+          "description": "Total de objetos / numero de plantas"
+        },
+        "objects_per_space": {
+          "alias": "Objetos por espacio",
+          "description": "Total de objetos / numero de espacios"
+        },
+        "objects_per_m2": {
+          "alias": "Objetos por m2",
+          "description": "Total de objetos / area bruta de planta"
+        },
+        "volume_per_m2": {
+          "alias": "Volumen por m2",
+          "description": "Volumen bruto / area bruta de planta"
+        },
+        "extractor_version": {
+          "alias": "Version del extractor",
+          "description": "Version del motor de extraccion"
+        },
+        "extraction_datetime": {
+          "alias": "Fecha y hora de extraccion",
+          "description": "Fecha y hora de la extraccion en formato ISO-8601"
+        },
+        "extraction_status": {
+          "alias": "Estado de extraccion",
+          "description": "ok o error"
+        },
+        "extraction_error": {
+          "alias": "Error de extraccion",
+          "description": "Mensaje de error cuando extraction_status = error"
+        },
+        "asset_type": {
+          "alias": "Tipo de activo",
+          "description": "Tipo de activo representado por el modelo IFC, independiente del dominio"
+        },
+        "asset_subtype": {
+          "alias": "Subtipo de activo",
+          "description": "Subtipo mas especifico del activo representado"
+        },
+        "intended_use": {
+          "alias": "Uso previsto",
+          "description": "Uso previsto o funcional del activo"
+        },
+        "lifecycle_stage": {
+          "alias": "Fase del ciclo de vida",
+          "description": "Fase del ciclo de vida del activo o del modelo"
+        },
+        "operational_status": {
+          "alias": "Estado operativo",
+          "description": "Estado operativo del activo"
+        },
+        "owner": {
+          "alias": "Propietario",
+          "description": "Propietario del activo o instalacion"
+        },
+        "operator": {
+          "alias": "Operador",
+          "description": "Operador responsable del activo"
+        },
+        "maintainer": {
+          "alias": "Responsable de mantenimiento",
+          "description": "Entidad responsable del mantenimiento"
+        },
+        "asset_identifier": {
+          "alias": "Identificador del activo",
+          "description": "Identificador unico del activo cuando este disponible"
+        },
+        "facility_identifier": {
+          "alias": "Identificador de instalacion",
+          "description": "Identificador de la instalacion o sistema de infraestructura cuando este disponible"
+        },
+        "commissioning_date": {
+          "alias": "Fecha de puesta en servicio",
+          "description": "Fecha de puesta en servicio del activo"
+        },
+        "expected_service_life": {
+          "alias": "Vida util prevista",
+          "description": "Vida util prevista del activo"
+        },
+        "primary_classification_system": {
+          "alias": "Sistema de clasificacion principal",
+          "description": "Sistema de clasificacion principal detectado en el modelo IFC"
+        },
+        "primary_classification_code": {
+          "alias": "Codigo de clasificacion principal",
+          "description": "Codigo de clasificacion principal detectado en el modelo IFC"
+        },
+        "primary_classification_name": {
+          "alias": "Nombre de clasificacion principal",
+          "description": "Nombre o titulo de la clasificacion principal detectada en el modelo IFC"
+        },
+        "pct_objects_with_psets": {
+          "alias": "Objetos con Psets (%)",
+          "description": "% de entidades IfcObject con al menos un PropertySet"
+        },
+        "pct_objects_with_classification": {
+          "alias": "Objetos con clasificacion (%)",
+          "description": "% de entidades IfcObject con al menos una referencia de clasificacion"
+        },
+        "pct_objects_with_material": {
+          "alias": "Objetos con material (%)",
+          "description": "% de entidades IfcObject con al menos una asociacion de material"
+        },
+        "pct_objects_with_manufacturer": {
+          "alias": "Objetos con fabricante (%)",
+          "description": "% de entidades IfcObject con informacion de fabricante en Psets"
+        },
+        "pct_objects_with_asset_tag": {
+          "alias": "Objetos con etiqueta de activo (%)",
+          "description": "% de entidades IfcObject con etiqueta o identificador de activo"
+        },
+        "pct_objects_with_serial_number": {
+          "alias": "Objetos con numero de serie (%)",
+          "description": "% de entidades IfcObject con informacion de numero de serie"
+        },
+        "pct_objects_with_documents": {
+          "alias": "Objetos con documentos (%)",
+          "description": "% de entidades IfcObject con documentos asociados"
+        }
+      },
+      "source_types": {
+        "external_metadata": "Metadatos externos",
+        "ifc_attribute": "Atributo IFC",
+        "pset_property": "Propiedad Pset",
+        "quantity": "Cantidad Qto",
+        "computed": "Calculado"
+      }
+    }
+  },
+  "source_type_values": [
+    "external_metadata",
+    "ifc_attribute",
+    "pset_property",
+    "quantity",
+    "computed"
+  ]
+}
