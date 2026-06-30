@@ -10,6 +10,9 @@ Usage:
 The subprocess logs status to stdout:
     READY:<win_id>          — window is visible and ready
     RENDERER_CRASH:<status> — WebEngine renderer crashed (page auto-reloads)
+    QT_BINDING:PyQt6        — subprocess loaded PyQt6 (QGIS 4 / Qt6)
+    QT_BINDING:PyQt5        — subprocess loaded PyQt5 (QGIS 3 / Qt5)
+    QT_BINDING_ERROR:<msg>  — both bindings failed; subprocess will exit
 """
 
 from __future__ import annotations
@@ -27,6 +30,7 @@ def main() -> int:
 
     # Import Qt directly — not via qgis.PyQt which requires a running QGIS context.
     # Try Qt6 first (QGIS 4), fall back to Qt5 (QGIS 3).
+    _pyqt6_err: str = ""
     try:
         from PyQt6.QtCore import QTimer, QUrl
         from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -35,13 +39,34 @@ def main() -> int:
         def exec_app(app: QApplication) -> int:
             return app.exec()
 
-    except ImportError:
-        from PyQt5.QtCore import QTimer, QUrl  # type: ignore[no-redef]
-        from PyQt5.QtWebEngineWidgets import QWebEngineView  # type: ignore[no-redef]
-        from PyQt5.QtWidgets import QApplication  # type: ignore[no-redef]
+        print("QT_BINDING:PyQt6", flush=True)
 
-        def exec_app(app: QApplication) -> int:  # type: ignore[misc]
-            return app.exec_()
+    except ImportError as _exc:
+        _pyqt6_err = str(_exc)
+        print(f"QT_BINDING_FALLBACK:PyQt6 unavailable ({_pyqt6_err})", flush=True)
+        try:
+            from PyQt5.QtCore import QTimer, QUrl  # type: ignore[no-redef]
+            from PyQt5.QtWebEngineWidgets import QWebEngineView  # type: ignore[no-redef]
+            from PyQt5.QtWidgets import QApplication  # type: ignore[no-redef]
+
+            def exec_app(app: QApplication) -> int:  # type: ignore[misc]
+                return app.exec_()
+
+            print("QT_BINDING:PyQt5", flush=True)
+
+        except ImportError as _exc5:
+            print(
+                f"QT_BINDING_ERROR:PyQt5 unavailable ({_exc5})",
+                flush=True,
+            )
+            print(
+                "QT_BINDING_ERROR: no Qt WebEngine binding found — install "
+                "python3-pyqtwebengine via OSGeo4W Setup (QGIS 3) or "
+                "python3-pyqt6-webengine (QGIS 4).",
+                file=sys.stderr,
+                flush=True,
+            )
+            return 1
 
     app = QApplication(sys.argv[:1])
 

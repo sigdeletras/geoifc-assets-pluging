@@ -70,6 +70,12 @@ def _find_python_executable() -> str:
     """
     from shutil import which
 
+    _log.info(
+        "sys.executable=%s  sys.prefix=%s  sys.version=%s",
+        sys.executable,
+        sys.prefix,
+        sys.version.split()[0],
+    )
     qgis_bin = Path(sys.executable).parent
     candidates = [
         qgis_bin / "python3.exe",           # QGIS Windows (OSGeo4W)
@@ -79,12 +85,18 @@ def _find_python_executable() -> str:
         Path(sys.prefix) / "bin" / "python",   # Linux/macOS alt
     ]
     for path in candidates:
-        if path.is_file():
-            _log.info("Found Python interpreter: %s", path)
+        exists = path.is_file()
+        _log.debug("Python candidate %s — %s", path, "found" if exists else "not found")
+        if exists:
+            _log.info("Python interpreter resolved: %s", path)
             return str(path)
 
     fallback = which("python3") or which("python") or sys.executable
-    _log.warning("Python interpreter not found via candidates; using: %s", fallback)
+    _log.warning(
+        "Python interpreter not found via candidates (sys.executable=%s); fallback: %s",
+        sys.executable,
+        fallback,
+    )
     return fallback
 
 
@@ -374,7 +386,21 @@ class IfcViewerDock:
         line = raw.decode("utf-8", errors="replace").strip()
         _log.info("Subprocess stdout: %s", line)
         _qlog(f"Viewer subprocess: {line}")
-        if line.startswith("READY:"):
+        if line.startswith("QT_BINDING:"):
+            binding = line.split(":", 1)[1]
+            _log.info("Subprocess loaded Qt binding: %s", binding)
+            _qlog(f"IFC viewer using {binding} WebEngine", level="Info")
+        elif line.startswith("QT_BINDING_FALLBACK:"):
+            _log.warning("Subprocess Qt binding fallback: %s", line)
+            _qlog(line, level="Warning")
+        elif line.startswith("QT_BINDING_ERROR:"):
+            _log.error("Subprocess Qt binding error: %s", line)
+            _qlog(line, level="Critical")
+            self._status_label.setText(
+                tr("GeoIfcAssets", "IFC viewer error: QtWebEngine not available. "
+                   "Install python3-pyqtwebengine via OSGeo4W Setup.")
+            )
+        elif line.startswith("READY:"):
             self._status_label.setText(
                 tr("GeoIfcAssets", "IFC viewer window open — select a feature to load IFC.")
             )

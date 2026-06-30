@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import subprocess
@@ -5,6 +6,8 @@ import sys
 
 from qgis.PyQt import QtWidgets
 from qgis.core import QgsSettings
+
+_log = logging.getLogger("geoifcassets")
 
 path_requirements = os.path.dirname(__file__)
 requirements_file = os.path.join(path_requirements, 'requirements.txt')
@@ -72,11 +75,26 @@ def _missing_packages() -> list[str]:
 
 
 def check_and_install_requirements():
+    _log.info(
+        "requirements check — sys.executable=%s  sys.version=%s",
+        sys.executable,
+        sys.version.split()[0],
+    )
+    _exe_name = os.path.basename(sys.executable).lower()
+    if "python" not in _exe_name:
+        _log.warning(
+            "sys.executable does not look like a Python interpreter (%s); "
+            "pip subprocess calls may fail on a clean installation.",
+            sys.executable,
+        )
+
     # Omitir comprobación si ya se procesó esta versión del complemento
     if _requirements_already_installed():
+        _log.debug("requirements already installed for this plugin version — skipping")
         return True
 
     missing = _missing_packages()
+    _log.info("missing packages: %s", missing if missing else "none")
     if not missing:
         _mark_requirements_installed()
         return True
@@ -125,12 +143,23 @@ def check_and_install_requirements():
             return False
 
     for package in missing:
+        _log.info("installing package: %s (using %s)", package, sys.executable)
         try:
-            subprocess.run(
+            result = subprocess.run(
                 [sys.executable, '-m', 'pip', 'install', '--user', package],
-                check=True
+                check=True,
+                capture_output=True,
+                text=True,
             )
+            _log.info("pip install %s succeeded: %s", package, result.stdout.strip()[:200])
         except subprocess.CalledProcessError as error:
+            _log.error(
+                "pip install %s failed (RC=%s): stdout=%s stderr=%s",
+                package,
+                error.returncode,
+                getattr(error, "stdout", ""),
+                getattr(error, "stderr", ""),
+            )
             QtWidgets.QMessageBox.warning(
                 None,
                 "❌ Error de instalación",
