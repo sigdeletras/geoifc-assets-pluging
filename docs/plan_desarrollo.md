@@ -1,6 +1,6 @@
 # GeoIFC Assets
 
-## Plan de Desarrollo y Arquitectura Tecnica (v3.16)
+## Plan de Desarrollo y Arquitectura Tecnica (v3.17)
 
 ---
 
@@ -617,48 +617,6 @@ Criterios de aceptacion:
 
 ---
 
-### HU-06 Mapear propiedades IFC a campos GIS
-
-Como tecnico GIS, quiero asignar cada propiedad IFC seleccionada a un campo GIS, para controlar donde se guardara cada valor.
-
-Criterios de aceptacion:
-
-* El usuario puede elegir un campo existente.
-* El usuario puede proponer un campo nuevo.
-* El sistema infiere un tipo de dato razonable.
-* El usuario puede confirmar o ajustar el tipo de dato.
-* El sistema advierte antes de sobrescribir valores existentes.
-
----
-
-### HU-07 Crear campos GIS controladamente
-
-Como tecnico GIS, quiero crear campos nuevos desde el complemento solo cuando lo confirme, para evitar modificar la estructura de la capa accidentalmente.
-
-Criterios de aceptacion:
-
-* El sistema lista los campos que se van a crear.
-* El usuario confirma la creacion antes de modificar la capa.
-* El sistema valida nombres duplicados o no permitidos.
-* El sistema informa si la capa no permite edicion.
-
----
-
-### HU-08 Escribir valores IFC en atributos GIS
-
-Como gestor de activos, quiero cargar los valores seleccionados en el feature GIS, para enriquecer el inventario con informacion BIM.
-
-Criterios de aceptacion:
-
-* El sistema escribe los valores en los campos configurados del feature seleccionado.
-* El sistema actualiza `ifc_status`.
-* El sistema actualiza `ifc_updated_at`.
-* Si hay error, el sistema registra el mensaje en `ifc_error`.
-* El usuario recibe confirmacion clara del resultado.
-* La carga sobre varias features o sobre una capa completa queda fuera del MVP.
-
----
-
 ### HU-09 Usar el complemento en ingles y espanol
 
 Como usuario del complemento, quiero poder usar toda la interfaz en ingles o espanol, para trabajar en el idioma requerido por mi entorno.
@@ -715,25 +673,117 @@ Criterios de aceptacion:
 
 ---
 
+### HU-13 Exportar CSV y JSON desde el visor IFC
+
+Como tecnico BIM, quiero exportar el arbol fisico o las propiedades del elemento IFC seleccionado a JSON o CSV, para documentar y compartir datos del modelo fuera de QGIS.
+
+Criterios de aceptacion:
+
+* El usuario puede exportar el arbol espacial a JSON desde el boton Export del visor.
+* El usuario puede exportar las categorias de elementos a JSON.
+* El usuario puede exportar las propiedades del elemento seleccionado a JSON y CSV.
+* El sistema descarga el archivo con un nombre descriptivo.
+
+---
+
+### HU-14 Navegacion en el visor 3D
+
+Como usuario del complemento, quiero navegar el modelo IFC en 3D con controles de orbita, zoom, pan y vistas predefinidas, para explorar su geometria desde diferentes angulos y escalas.
+
+Criterios de aceptacion:
+
+* El usuario puede orbitar, hacer zoom y hacer pan sobre el modelo.
+* El usuario puede cambiar a vistas predefinidas: Front, Back, Left, Right, Top, ISO.
+* La camara anima suavemente entre posiciones al cambiar de vista.
+* El usuario puede alternar entre proyeccion perspectiva y ortografica.
+* La seleccion de elementos y las herramientas de medicion funcionan en modo ortografico.
+
+---
+
+### HU-15 Consultar propiedades recopiladas
+
+Como responsable de inventario, quiero consultar el listado de propiedades recopiladas del modelo IFC, para revisar que informacion esta disponible antes de transferirla a GIS.
+
+Criterios de aceptacion:
+
+* El panel de propiedades muestra los campos disponibles agrupados por grupo funcional.
+* El panel muestra metricas por clase IFC: clase, numero de elementos, longitud, area y volumen.
+* El usuario puede ver la fuente IFC de cada campo.
+* El usuario puede ver el valor actual de cada campo para el feature seleccionado.
+
+---
+
+### HU-16 Transferir propiedades a GIS
+
+Como responsable de inventario, quiero transferir las propiedades IFC seleccionadas al feature de la capa GIS, para enriquecer el inventario con informacion BIM.
+
+Criterios de aceptacion:
+
+* El usuario puede seleccionar una propiedad IFC y asignarla a un campo GIS existente o nuevo.
+* El sistema infiere un tipo de dato razonable.
+* El sistema solicita confirmacion antes de crear campos nuevos.
+* El sistema advierte antes de sobrescribir valores existentes.
+* El sistema escribe los valores en el feature GIS seleccionado.
+* El sistema actualiza `ifc_status`, `ifc_updated_at` e `ifc_error` si existen en la capa.
+* El usuario recibe confirmacion clara del resultado.
+
+---
+
+### HU-17 Herramientas de analisis del visor
+
+Como tecnico BIM, quiero utilizar herramientas de analisis visual en el visor 3D, para medir distancias, areas y explorar secciones del modelo.
+
+Criterios de aceptacion:
+
+* El usuario puede medir longitudes entre dos puntos.
+* El usuario puede medir areas mediante un poligono (clic derecho para cerrar).
+* El usuario puede activar un plano de seccion transversal con selector de eje (X/Y/Z), control de posicion e inversion de lado.
+* Las geometrias de medicion se muestran sobre el modelo como geometrias Three.js temporales.
+* Las herramientas de medicion coexisten con la seccion transversal.
+* Las etiquetas de medicion se borran al cambiar de elemento seleccionado.
+
+---
+
+### HU-18 Ver los textos de propiedades en el idioma de QGIS
+
+Como usuario del complemento, quiero ver los nombres y textos del panel de propiedades en el idioma configurado en QGIS, para trabajar en el idioma requerido por mi entorno.
+
+Criterios de aceptacion:
+
+* Los nombres de grupo y de campo en el panel de propiedades son traducibles.
+* Los textos del panel se muestran en ingles o espanol segun el idioma activo en QGIS.
+* La traduccion del panel de propiedades es coherente con la traduccion general del complemento (HU-09).
+
+---
+
+### HU-19 Generar capa temporal GIS con propiedades
+
+Como tecnico GIS, quiero crear una capa GIS temporal indicando su geometria y cargar las propiedades seleccionadas del modelo IFC, para iniciar un inventario geoespacial con informacion BIM.
+
+Criterios de aceptacion:
+
+* El usuario puede crear una capa temporal de tipo puntual, lineal o poligonal desde el complemento.
+* El sistema activa la herramienta de digitalizacion de QGIS tras confirmar el dialogo.
+* Las propiedades seleccionadas del panel se pueden cargar como campos en la nueva capa.
+* La capa incluye los campos minimos `ifc_path` o `ifc_url` e `ifc_file`.
+* El flujo esta disponible cuando hay un IFC cargado en el visor.
+
+---
+
+### HU-20 Instalar complemento desde ZIP
+
+Como usuario, quiero poder instalarme el complemento a partir del ZIP, para usarlo en mi instalacion de QGIS sin necesidad de acceso a un repositorio de complementos.
+
+Criterios de aceptacion:
+
+* El ZIP de distribucion contiene unicamente la carpeta `geoifcassets/`.
+* La estructura del ZIP es compatible con el instalador de complementos de QGIS.
+* El complemento se activa correctamente tras la instalacion desde ZIP.
+* El README incluye instrucciones de instalacion desde ZIP.
+
+---
+
 ## 7.3 Historias evolutivas
-
-### HU-E01 Guardar un mapeo reutilizable
-
-Como tecnico GIS, quiero guardar una seleccion de propiedades y campos de destino, para repetir una carga similar sin configurar todo desde cero.
-
----
-
-### HU-E02 Crear un perfil sectorial desde mapeos validados
-
-Como responsable de inventario, quiero convertir mapeos frecuentes en perfiles sectoriales, para estandarizar cargas por tipologia de activo.
-
----
-
-### HU-E03 Aplicar un perfil sectorial a un activo
-
-Como tecnico GIS, quiero aplicar un perfil sectorial a un feature, para cargar propiedades IFC habituales de forma semiautomatica.
-
----
 
 ### HU-E04 Generar huella geografica de una planta IFC georreferenciada como capa temporal
 
@@ -797,7 +847,7 @@ Condicion de activacion:
 
 * Requiere que el IFC este abierto en el visor embebido (HU-02 completada).
 * Se activa solo cuando el IFC tiene georreferenciacion completa via `IfcMapConversion`.
-* Esta historia es evolutiva y no forma parte del MVP. Se implementa tras validar el flujo manual de propiedades (HU-05 a HU-08).
+* Esta historia es evolutiva y no forma parte del MVP. Se implementa tras validar el flujo manual de propiedades (HU-05, HU-15, HU-16).
 
 Diseno de integracion con el selector de plantas existente:
 
@@ -1266,7 +1316,7 @@ sin necesidad de replicar el modelo BIM dentro del SIG.
 | Fase | Descripcion | Estado |
 |------|-------------|--------|
 | Fase 1 | Base del complemento | Completa |
-| Fase 2 | MVP visor IFC + carga manual | ~93 % (pendiente: compilar .qm, verificar Quantity Sets en visor JS) |
+| Fase 2 | MVP visor IFC + carga manual | ~85 % (pendiente: compilar .qm, Quantity Sets en visor JS, conectar panel metricas dock, instrucciones ZIP) |
 | Fase 3 | Calidad y empaquetado | ~40 % (tests unitarios presentes; faltan integracion, QGIS y documentacion) |
 | Fase 4 | Perfiles sectoriales | No iniciada |
 
@@ -1281,13 +1331,18 @@ sin necesidad de replicar el modelo BIM dentro del SIG.
 | HU-03 | Seleccionar un elemento IFC | Completa | Arbol por categoria (Fase A), arbol espacial (Fase B), ray-casting 3D, zoom de camara al elemento seleccionado. |
 | HU-04 | Consultar propiedades BIM | Parcial | Atributos directos y PropertySets mostrados en el panel del visor. Extractores Python `model_info_extractor.py` y `quantity_extractor.py` implementados. Panel de metricas de modelo en el dock aun no conectado (HU-04-B pendiente). |
 | HU-05 | Seleccionar propiedades para cargar en GIS | Parcial | Transferencia propiedad a propiedad con boton `->` (elementos IFC individuales). Nueva fuente de datos: metricas agregadas de modelo (metadatos + cantidades). Panel de seleccion de metricas en el dock pendiente. |
-| HU-06 | Mapear propiedades IFC a campos GIS | Completa | Dialogo BIM->GIS con campo existente o campo nuevo (Fase C: POST /transfer + QDialog + `changeAttributeValue`). |
-| HU-07 | Crear campos GIS controladamente | Completa | El dialogo de transferencia solicita confirmacion antes de crear el campo. |
-| HU-08 | Escribir valores IFC en atributos GIS | Completa | Escritura del valor funcional. `ifc_status`, `ifc_updated_at` e `ifc_error` se actualizan automaticamente si existen en la capa; se omiten sin error si no existen. |
 | HU-09 | Usar el complemento en ingles y espanol | Parcial | Todos los textos usan `tr()`. Archivos `.ts` en ingles y espanol presentes. Archivos `.qm` compilados ausentes — las traducciones no estan activas en QGIS. |
 | HU-10 | Instalar y validar el complemento | Completa | Estructura de repositorio correcta, `metadata.txt`, scripts de empaquetado presentes. |
 | HU-11 | Consultar el estado de los flujos | Completa | Log de usuario en dock (QTextEdit). Developer logs via `PluginLogger`. Sin `print()` en el plugin distribuible. |
-| HU-12 | Visualizar IFC y crear capa GIS sin capa previa | Completa | Boton "Browse IFC file…" en tab Layer/Features. Barra de acciones en tab IFC Viewer: "New temp layer…" (Point/Line/Polygon, digitaliza con valores por defecto pre-rellenos) y "Add to existing layer…" (signal `featureAdded` rellena campos IFC tras el dibujo). Capa de huella incluye `ifc_url`. |
+| HU-12 | Visualizar IFC y crear capa GIS sin capa previa | Completa | Boton "Browse IFC file…" en tab GeoIFC. Barra de acciones en tab GeoIFC: "New temp layer…" (Point/Line/Polygon, digitaliza con campos pre-rellenos) y "Add to existing layer…" (signal `featureAdded` rellena campos IFC tras el dibujo). Capa de huella incluye `ifc_url`. |
+| HU-13 | Exportar CSV y JSON desde el visor IFC | Completa | Boton Export con menu desplegable: arbol espacial (JSON), categorias (JSON), propiedades del elemento seleccionado (JSON y CSV). Implementado en la SPA web-ifc. |
+| HU-14 | Navegacion en el visor 3D | Completa | Controles de orbita, zoom, pan. Vistas predefinidas (Front/Back/Left/Right/Top/ISO) con animacion suave (lerp). Proyeccion ortografica (`THREE.OrthographicCamera`) sincronizada con camara perspectiva; raycasting de seleccion y medicion usa la camara activa. |
+| HU-15 | Consultar propiedades recopiladas | Parcial | Tab Properties del dock: arbol `_fields_tree` (cols: Property / GIS field / IFC source / Value) con campos agrupados por grupo funcional y arbol `_classes_tree` (cols: Class / count / length / area / volume) con metricas por clase IFC. Panel de metricas pendiente de conectar completamente (HU-04-B). |
+| HU-16 | Transferir propiedades a GIS | Completa | Boton `->` en el visor IFC: POST /transfer + QDialog + `changeAttributeValue`. Incluye mapeo a campo existente o nuevo, confirmacion antes de crear campo, advertencia de sobrescritura, y actualizacion automatica de `ifc_status` / `ifc_updated_at` / `ifc_error` si existen en la capa. |
+| HU-17 | Herramientas de analisis del visor | Completa | Medicion de longitud (2 puntos) y area (poligono, clic derecho cierra). Seccion transversal: plano de corte global (`THREE.Plane`), selector de eje X/Y/Z, slider de posicion, boton de inversion. Coexiste con herramientas de medicion. |
+| HU-18 | Ver los textos de propiedades en el idioma de QGIS | Parcial | Textos del panel usan `tr()`. Archivos `.ts` presentes. Archivos `.qm` pendientes de compilar — mismo estado que HU-09. |
+| HU-19 | Generar capa temporal GIS con propiedades | Completa | Boton "New temp layer…" en tab GeoIFC: selector de tipo de geometria (Point/Line/Polygon), digitalizacion activa con QGIS tras confirmar, campos `ifc_path` / `ifc_url` e `ifc_file` pre-rellenos. |
+| HU-20 | Instalar complemento desde ZIP | Parcial | Script `package_plugin.ps1` genera el ZIP correctamente. Instrucciones de instalacion desde ZIP pendientes en README. |
 
 ---
 
@@ -1295,9 +1350,6 @@ sin necesidad de replicar el modelo BIM dentro del SIG.
 
 | HU | Titulo | Estado | Observaciones |
 |----|--------|--------|---------------|
-| HU-E01 | Guardar un mapeo reutilizable | No iniciada | |
-| HU-E02 | Crear un perfil sectorial desde mapeos validados | No iniciada | |
-| HU-E03 | Aplicar un perfil sectorial a un activo | No iniciada | |
 | HU-E04 | Generar huella geografica de planta IFC | Completa | Implementada antes del MVP. `footprint_extractor.py` y `footprint_layer.py`. Deteccion de `IfcMapConversion`, transformacion de coordenadas via `ifcopenshell.util.geolocation`, capa temporal en QGIS de tipo **MultiPolygon** con reproyeccion al CRS del proyecto. Un unico feature por planta; la union de recintos disjuntos se preserva como MultiPolygon. Dialogo manual de CRS si el IFC carece de `IfcMapConversion`. |
 
 ---
@@ -1345,12 +1397,13 @@ Sin tests de integracion ni tests con entorno QGIS real aun.
 
 ## 16.6 Pendientes prioritarios para cerrar el MVP
 
-1. **Compilar archivos .qm** — ejecutar `scripts/compile_translations.ps1` y verificar carga correcta en QGIS para activar traducciones EN/ES (HU-09).
-2. ~~**Campos ifc_status / ifc_updated_at**~~ — Completado. `build_status_updates` en `core/mapping.py` + `_apply_status_updates` en `plugin.py` (HU-08).
+1. **Compilar archivos .qm** — ejecutar `scripts/compile_translations.ps1` y verificar carga correcta en QGIS para activar traducciones EN/ES (HU-09, HU-18).
+2. ~~**Campos ifc_status / ifc_updated_at**~~ — Completado. `build_status_updates` en `core/mapping.py` + `_apply_status_updates` en `plugin.py` (HU-16).
 3. ~~**Panel de metricas de modelo**~~ — Completado. `model_info_extractor.py` + `quantity_extractor.py` + tabla de metricas en dock (`set_model_metrics`) + boton → por metrica (HU-04/HU-05).
 4. **Quantity Sets en el visor JS** — verificar que el visor web muestra Quantity Sets y que el boton `->` de elementos individuales funciona para ellos (HU-04).
 5. **Tests de integracion** — al menos un test de integracion con fixture IFC real para la extraccion de propiedades y la huella geografica (Fase 3).
 6. **Documentacion de usuario** — `docs/manual_usuario.md` y `docs/instalacion.md` no existen aun (Fase 3).
+7. **Instrucciones de instalacion desde ZIP** — anadir seccion de instalacion manual en README (HU-20).
 
 ---
 

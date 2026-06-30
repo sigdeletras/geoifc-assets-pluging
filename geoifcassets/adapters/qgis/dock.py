@@ -17,31 +17,11 @@ _GROUP_SECTION_ROLE = 258   # "core" | "custom" | "separator" on group items
 _METRIC_COLS = ("count", "length", "area", "volume")
 
 # ── Stylesheet tokens ──────────────────────────────────────────────────────────
-_CSS_STATUS_IDLE = (
-    "background-color: #FEF6E8; color: #92400E; border: 1px solid #EDD39A;"
-    " border-radius: 2px; padding: 5px 7px;"
-)
-_CSS_STATUS_READY = (
-    "background-color: #E5EEFA; color: #1756A6; border: 1px solid #93B8E8;"
-    " border-radius: 2px; padding: 5px 7px;"
-)
-_CSS_OPEN_BTN = (
-    "QPushButton { background-color: #1756A6; color: white; font-weight: bold;"
-    " padding: 6px; border: none; border-radius: 2px; }"
-    " QPushButton:disabled { background-color: #C4CEDB; color: #8B97A8; }"
-    " QPushButton:hover:!disabled { background-color: #1450A3; }"
-)
-_CSS_BROWSE_BTN = (
-    "QPushButton { border: 1px dashed #C4CEDB; color: #8B97A8; padding: 4px;"
-    " background: transparent; }"
-    " QPushButton:hover { color: #1B2536; border-color: #8B97A8; }"
-)
-_CSS_SECTION_LBL = "color: #8B97A8; font-size: 8pt;"
+_CSS_WARNING = "color: #6B0032;"  # burgundy — idle/notice state only
+_CSS_OPEN_BTN = "QPushButton { font-weight: bold; }"
 _CSS_CLASSES_TOGGLE = (
-    "QPushButton { text-align: left; border: none; border-top: 1px solid #DDE3EC;"
-    " background: transparent; color: #8B97A8; font-size: 8pt; padding: 5px 2px; }"
-    " QPushButton:hover { color: #1B2536; }"
-    " QPushButton:checked { color: #1B2536; font-weight: 600; }"
+    "QPushButton { text-align: left; }"
+    " QPushButton:checked { font-weight: bold; }"
 )
 
 
@@ -86,6 +66,7 @@ class GeoIfcAssetsDock:
             QComboBox,
             QDockWidget,
             QFrame,
+            QGroupBox,
             QHBoxLayout,
             QHeaderView,
             QLabel,
@@ -127,7 +108,6 @@ class GeoIfcAssetsDock:
 
         # — Section: IFC SOURCE
         _src_lbl = QLabel("IFC SOURCE")
-        _src_lbl.setStyleSheet(_CSS_SECTION_LBL)
         layer_layout.addWidget(_src_lbl)
 
         # — Layer combo + Refresh button inline
@@ -158,7 +138,7 @@ class GeoIfcAssetsDock:
         self._feature_table.setSelectionBehavior(_table_selection_behavior())
         self._feature_table.setSelectionMode(_table_selection_mode())
         self._feature_table.itemSelectionChanged.connect(self._select_feature_row)
-        layer_layout.addWidget(self._feature_table)
+        layer_layout.addWidget(self._feature_table, 1)
 
         # — "or" separator before Browse IFC
         _or_row = QWidget()
@@ -175,7 +155,6 @@ class GeoIfcAssetsDock:
                 _ln.setFrameShape(QFrame.Shape.HLine)
                 _ln.setFrameShadow(QFrame.Shadow.Sunken)
         _or_lbl = QLabel(tr("GeoIfcAssets", "or"))
-        _or_lbl.setStyleSheet(_CSS_SECTION_LBL)
         _or_layout.addWidget(_or_line_l, 1)
         _or_layout.addWidget(_or_lbl)
         _or_layout.addWidget(_or_line_r, 1)
@@ -186,7 +165,6 @@ class GeoIfcAssetsDock:
         self._browse_ifc_btn.setToolTip(
             tr("GeoIfcAssets", "Open an IFC file directly without a GIS layer")
         )
-        self._browse_ifc_btn.setStyleSheet(_CSS_BROWSE_BTN)
         if on_browse_ifc is not None:
             self._browse_ifc_btn.clicked.connect(on_browse_ifc)
         layer_layout.addWidget(self._browse_ifc_btn)
@@ -203,14 +181,13 @@ class GeoIfcAssetsDock:
 
         # — Section: STATUS
         _status_section_lbl = QLabel("STATUS")
-        _status_section_lbl.setStyleSheet(_CSS_SECTION_LBL)
         layer_layout.addWidget(_status_section_lbl)
 
         self._status_label = QLabel(
             tr("GeoIfcAssets", "Select a GIS feature with ifc_path or ifc_url to start.")
         )
         self._status_label.setWordWrap(True)
-        self._status_label.setStyleSheet(_CSS_STATUS_IDLE)
+        self._status_label.setStyleSheet(_CSS_WARNING)
         layer_layout.addWidget(self._status_label)
 
         # — Separator
@@ -225,33 +202,56 @@ class GeoIfcAssetsDock:
 
         # — Section: VIEWER
         _viewer_section_lbl = QLabel("VIEWER")
-        _viewer_section_lbl.setStyleSheet(_CSS_SECTION_LBL)
         layer_layout.addWidget(_viewer_section_lbl)
 
-        self._open_button = QPushButton(tr("GeoIfcAssets", "Open IFC viewer  ▶"))
+        self._open_button = QPushButton(tr("GeoIfcAssets", "Open IFC viewer"))
         self._open_button.setEnabled(False)
         self._open_button.clicked.connect(on_open_viewer)
         self._open_button.setStyleSheet(_CSS_OPEN_BTN)
+        try:
+            from qgis.core import QgsApplication  # noqa: PLC0415
+            self._open_button.setIcon(
+                QgsApplication.getThemeIcon("/mActionShowAllLayers.svg")
+            )
+        except Exception:  # noqa: BLE001
+            pass
         layer_layout.addWidget(self._open_button)
 
         if viewer_widget is not None:
             layer_layout.addWidget(viewer_widget)
 
-        # — Footprint bar (contextual to active storey)
-        footprint_bar = QWidget()
-        footprint_bar_layout = QHBoxLayout(footprint_bar)
-        footprint_bar_layout.setContentsMargins(4, 4, 4, 4)
+        # — Footprint group (contextual to active storey)
+        _footprint_group = QGroupBox(tr("GeoIfcAssets", "Floor Footprint"))
+        _footprint_group_layout = QVBoxLayout(_footprint_group)
+        _footprint_group_layout.setContentsMargins(6, 6, 6, 6)
+        _footprint_group_layout.setSpacing(4)
+
         self._storey_label = QLabel(tr("GeoIfcAssets", "No storey selected"))
-        self._footprint_btn = QPushButton(tr("GeoIfcAssets", "→ QGIS layer"))
+        self._storey_label.setWordWrap(True)
+
+        _footprint_desc = QLabel(
+            tr(
+                "GeoIfcAssets",
+                "Select a storey in the IFC viewer to generate its floor footprint"
+                " as a temporary QGIS layer with the element outlines.",
+            )
+        )
+        _footprint_desc.setWordWrap(True)
+
+        self._footprint_btn = QPushButton(
+            tr("GeoIfcAssets", "→ Generate footprint as QGIS layer")
+        )
         self._footprint_btn.setEnabled(False)
         self._footprint_btn.setToolTip(
             tr("GeoIfcAssets", "Generate floor footprint as a temporary QGIS layer")
         )
         if on_generate_footprint is not None:
             self._footprint_btn.clicked.connect(on_generate_footprint)
-        footprint_bar_layout.addWidget(self._storey_label, 1)
-        footprint_bar_layout.addWidget(self._footprint_btn)
-        layer_layout.addWidget(footprint_bar)
+
+        _footprint_group_layout.addWidget(self._storey_label)
+        _footprint_group_layout.addWidget(_footprint_desc)
+        _footprint_group_layout.addWidget(self._footprint_btn)
+        layer_layout.addWidget(_footprint_group)
 
         # ── Tab 2: Extract & Export ────────────────────────────────────────────
         extract_tab = QWidget()
@@ -261,7 +261,6 @@ class GeoIfcAssetsDock:
 
         # — Active IFC info label
         self._ifc_info_label = QLabel(tr("GeoIfcAssets", "No IFC loaded"))
-        self._ifc_info_label.setStyleSheet(_CSS_SECTION_LBL)
         extract_layout.addWidget(self._ifc_info_label)
 
         # — Action bar: tree controls + filter checkbox in one row
@@ -369,6 +368,7 @@ class GeoIfcAssetsDock:
         for _col in range(1, 5):
             self._classes_tree.setColumnWidth(_col, 80)
         self._classes_tree.setSortingEnabled(True)
+        self._classes_tree.setMaximumHeight(160)
         _classes_vbox.addWidget(self._classes_tree)
         extract_layout.addWidget(self._classes_content)
 
@@ -386,8 +386,6 @@ class GeoIfcAssetsDock:
 
         # — Export footer: all GIS output actions consolidated
         _export_footer = QWidget()
-        _export_footer.setObjectName("exportFooter")
-        _export_footer.setStyleSheet("#exportFooter { background-color: #F2F5FA; }")
         _export_footer_layout = QVBoxLayout(_export_footer)
         _export_footer_layout.setContentsMargins(6, 6, 6, 6)
         _export_footer_layout.setSpacing(4)
@@ -459,9 +457,7 @@ class GeoIfcAssetsDock:
     def set_status(self, message: str, can_open_viewer: bool = False) -> None:
         self._status_label.setText(message)
         self._open_button.setEnabled(can_open_viewer)
-        self._status_label.setStyleSheet(
-            _CSS_STATUS_READY if can_open_viewer else _CSS_STATUS_IDLE
-        )
+        self._status_label.setStyleSheet("" if can_open_viewer else _CSS_WARNING)
 
     def add_user_log(self, message: str) -> None:
         self._user_log.append(message)
@@ -946,9 +942,9 @@ class GeoIfcAssetsDock:
         about = g.get("about", g.get("description", ""))
 
         html = (
-            "<html><body style='font-family: sans-serif; margin: 12px;'>"
-            f"<h2 style='color: #1756A6;'>{name}</h2>"
-            f"<p style='color: #555;'>Version {version}</p>"
+            "<html><body>"
+            f"<h2>{name}</h2>"
+            f"<p>Version {version}</p>"
             f"<p>{about}</p>"
             "<hr/>"
             "<h3>Developer</h3>"
