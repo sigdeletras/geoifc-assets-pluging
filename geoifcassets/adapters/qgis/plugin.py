@@ -42,6 +42,11 @@ class GeoIfcAssetsPlugin:
         self._selected_layer: Any | None = None
         self._selected_feature: Any | None = None
         self._active_storey: dict | None = None
+        self._last_extracted_ifc: str | None = None
+        self._last_discoveries: list = []
+        self._core_template: Any | None = None
+        self._custom_template: Any | None = None
+        self._last_extracted_fields: dict[str, Any] = {}
 
     def initGui(self) -> None:  # noqa: N802
         """Create menu, toolbar action and dock."""
@@ -91,7 +96,14 @@ class GeoIfcAssetsPlugin:
                 on_open_viewer=self._open_viewer,
                 viewer_widget=self._viewer_dock.qwidget(),
                 on_generate_footprint=self._generate_footprint,
+                on_metric_transfer=self._on_metric_transfer,
+                on_browse_ifc=self._browse_ifc_file,
+                on_create_temp_layer=self._show_create_temp_layer_dialog,
+                on_add_to_layer=self._show_add_to_layer_dialog,
+                on_load_json_template=self._load_json_template_file,
+                on_load_to_gis=self._handle_load_to_gis,
             )
+            self._load_default_template()
             dock_area = getattr(Qt, "RightDockWidgetArea", None)
             if dock_area is None:
                 dock_area = Qt.DockWidgetArea.RightDockWidgetArea
@@ -147,6 +159,23 @@ class GeoIfcAssetsPlugin:
         self._selected_layer = layer
         self._selected_feature = feature
 
+        if feature is not None and layer is not None:
+            geom = feature.geometry()
+            if geom and not geom.isNull():
+                from qgis.core import QgsCoordinateTransform, QgsProject  # noqa: PLC0415
+                canvas = self._iface.mapCanvas()
+                bbox = geom.boundingBox()
+                layer_crs = layer.crs()
+                canvas_crs = canvas.mapSettings().destinationCrs()
+                if layer_crs != canvas_crs:
+                    transform = QgsCoordinateTransform(
+                        layer_crs, canvas_crs, QgsProject.instance()
+                    )
+                    bbox = transform.transformBoundingBox(bbox)
+                bbox.scale(1.5)
+                canvas.setExtent(bbox)
+                canvas.refresh()
+
         result = self._feature_reader.read_from_feature(layer, feature)
         self._sync_current_feature(result)
 
@@ -154,12 +183,23 @@ class GeoIfcAssetsPlugin:
         if self._dock is not None:
             self._dock.set_active_storey(None)
 
+        if self._viewer_dock is not None and self._current_reference is None:
+            self._viewer_dock.clear_reference()
+            if self._dock is not None:
+                self._dock.clear_model_metrics()
+
+    def _open_viewer_for_feature(self, layer_id: str, feature_id: int) -> None:
+        self._select_feature(layer_id, feature_id)
         if self._current_reference is not None and self._viewer_dock is not None:
             self._viewer_dock.open_reference(self._current_reference)
             if self._dock is not None:
-                self._dock.switch_to_viewer_tab()
-        elif self._viewer_dock is not None:
-            self._viewer_dock.clear_reference()
+                self._dock.switch_to_layer_tab()
+            ifc_path = self._current_reference.value
+            if not ifc_path.startswith(("http://", "https://")):
+                self._extract_and_show_metrics(ifc_path)
+            else:
+                if self._dock is not None:
+                    self._dock.clear_model_metrics()
 
     def _sync_current_feature(
         self, result: FeatureIfcReferenceReadResult
@@ -170,6 +210,7 @@ class GeoIfcAssetsPlugin:
         if self._dock is not None:
             self._dock.set_status(message, can_open_viewer=result.reference is not None)
             self._dock.add_user_log(message)
+            self._dock.set_ifc_actions_enabled(result.reference is not None)
 
         if result.status is FeatureReadStatus.OK:
             self._logger.info(
@@ -202,7 +243,7 @@ class GeoIfcAssetsPlugin:
         if self._viewer_dock is not None:
             self._viewer_dock.open_reference(self._current_reference)
         if self._dock is not None:
-            self._dock.switch_to_viewer_tab()
+            self._dock.switch_to_layer_tab()
 
         read_result = self._ifc_reader.read_summary(self._current_reference.value)
         if read_result.status is IfcReadStatus.OK and read_result.summary is not None:
@@ -227,6 +268,13 @@ class GeoIfcAssetsPlugin:
             ifc_read_status=read_result.status.value,
             ifc_schema=read_result.summary.schema if read_result.summary else None,
         )
+
+        ifc_path = self._current_reference.value
+        if not ifc_path.startswith(("http://", "https://")):
+            self._extract_and_show_metrics(ifc_path)
+        else:
+            if self._dock is not None:
+                self._dock.clear_model_metrics()
 
     def _handle_transfer(self, data: dict) -> None:
         """Receive a transfer message from the viewer (Qt main thread).
@@ -421,6 +469,326 @@ class GeoIfcAssetsPlugin:
             used_fallback=footprint.used_fallback,
         )
 
+    def _extract_and_show_metrics(self, ifc_path: str) -> None:
+        """Run model info and quantity extractors and populate the dock metrics panel."""
+        from geoifcassets.adapters.ifc.model_info_extractor import extract_model_info  # noqa: PLC0415
+        from geoifcassets.adapters.ifc.quantity_extractor import extract_quantities  # noqa: PLC0415
+
+        if ifc_path == self._last_extracted_ifc:
+            return
+
+        self._last_extracted_ifc = ifc_path
+        if self._dock is not None:
+            self._dock.clear_model_metrics()
+
+        metrics = extract_model_info(ifc_path) + extract_quantities(ifc_path)
+
+        if self._dock is not None:
+            self._dock.set_model_metrics(metrics)
+            if metrics:
+                self._dock.add_user_log(
+                    tr("GeoIfcAssets", "{count} model metrics extracted.").format(count=len(metrics))
+                )
+            else:
+                self._dock.add_user_log(tr("GeoIfcAssets", "No model metrics could be extracted."))
+
+        self._logger.info("Model metrics extracted", count=len(metrics), ifc_path=ifc_path)
+        self._extract_and_show_fields(ifc_path)
+        self._discover_and_show_ifc_classes(ifc_path)
+
+    def _extract_and_show_fields(self, ifc_path: str) -> None:
+        """Extract core + custom template fields from the IFC and populate the Extract tab."""
+        if self._dock is None or self._core_template is None:
+            return
+        from geoifcassets.adapters.ifc.custom_field_extractor import (  # noqa: PLC0415
+            extract_custom_fields,
+        )
+        from geoifcassets.adapters.ifc.ifc_field_extractor import extract_fields  # noqa: PLC0415
+
+        core_names = [f.name for f in self._core_template.fields]
+        values = extract_fields(ifc_path, core_names)
+
+        if self._custom_template is not None:
+            values.update(extract_custom_fields(ifc_path, self._custom_template.fields))
+
+        self._last_extracted_fields = values
+        self._dock.set_extract_values(values)
+        self._logger.info(
+            "Extract tab values populated",
+            core_fields=len(core_names),
+            custom_fields=len(self._custom_template.fields) if self._custom_template else 0,
+            non_null=sum(1 for v in values.values() if v is not None),
+            ifc_path=ifc_path,
+        )
+
+    def _discover_and_show_ifc_classes(self, ifc_path: str) -> None:
+        """Discover IFC classes in the model and populate the Properties IFC Classes section."""
+        if self._dock is None:
+            return
+        from geoifcassets.adapters.ifc.class_extractor import discover_ifc_classes  # noqa: PLC0415
+
+        self._last_discoveries = discover_ifc_classes(ifc_path)
+        classes_info = [
+            {
+                "ifc_class": c.ifc_class,
+                "count": c.count,
+                "available": c.available,
+                "values": c.values,
+                "sources": c.sources,
+            }
+            for c in self._last_discoveries
+        ]
+        self._dock.set_ifc_classes(classes_info)
+        self._logger.info(
+            "IFC classes discovered", classes=len(self._last_discoveries), ifc_path=ifc_path
+        )
+
+    def _qgis_locale(self) -> str:
+        """Return the two-letter QGIS UI language code (e.g. 'es'). Falls back to 'en'."""
+        try:
+            from qgis.core import QgsApplication  # noqa: PLC0415
+            raw = QgsApplication.locale() or "en"
+            return raw.split("_")[0].lower()
+        except Exception:  # noqa: BLE001
+            return "en"
+
+    def _load_default_template(self) -> None:
+        """Load ifc_core_catalog_v2 as the fixed core template and set it on the dock."""
+        from geoifcassets.core.template_loader import load_builtin_template  # noqa: PLC0415
+
+        try:
+            template = load_builtin_template("ifc_core_catalog_v2", locale=self._qgis_locale())
+        except (ValueError, FileNotFoundError) as exc:
+            self._logger.warning("Could not load core template", error=str(exc))
+            return
+
+        self._core_template = template
+        if self._dock is not None:
+            self._dock.set_core_template(template)
+        self._logger.info("Core template loaded", template=template.template_name)
+
+    def _load_json_template_file(self) -> None:
+        """Open a file dialog and load a custom template JSON to add alongside core fields."""
+        from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox  # noqa: PLC0415
+
+        from geoifcassets.core.template_loader import load_template_from_path  # noqa: PLC0415
+
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            tr("GeoIfcAssets", "Load custom extraction template"),
+            "",
+            tr("GeoIfcAssets", "JSON files (*.json);;All files (*)"),
+        )
+        if not path:
+            return
+
+        try:
+            template = load_template_from_path(path, locale=self._qgis_locale())
+        except ValueError as exc:
+            self._messages.warning(
+                tr("GeoIfcAssets", "Invalid template file: {error}").format(error=str(exc))
+            )
+            return
+
+        # Conflict detection: warn if any custom field name duplicates a core field name
+        if self._core_template is not None:
+            core_names = {f.name for f in self._core_template.fields}
+            conflicts = [f.name for f in template.fields if f.name in core_names]
+            if conflicts:
+                msg = tr(
+                    "GeoIfcAssets",
+                    "Custom template has {n} field name(s) that conflict with core fields: {names}. "
+                    "These fields will be skipped.",
+                ).format(n=len(conflicts), names=", ".join(conflicts[:5]))
+                QMessageBox.warning(None, tr("GeoIfcAssets", "Field name conflict"), msg)
+                self._logger.warning(
+                    "Custom template has conflicting field names",
+                    conflicts=conflicts,
+                )
+
+        self._custom_template = template
+        if self._dock is not None:
+            self._dock.set_custom_template(template)
+            self._dock.add_user_log(
+                tr("GeoIfcAssets", "Custom template loaded: {name}").format(
+                    name=template.template_name
+                )
+            )
+
+        if self._last_extracted_ifc:
+            self._extract_and_show_fields(self._last_extracted_ifc)
+
+        self._logger.info("Custom template loaded", path=path, template=template.template_name)
+
+    def _handle_load_to_gis(self) -> None:
+        """Write selected Extract tab fields to the active GIS feature."""
+        from qgis.PyQt.QtCore import QVariant  # noqa: PLC0415
+        from qgis.PyQt.QtWidgets import (  # noqa: PLC0415
+            QDialog,
+            QDialogButtonBox,
+            QLabel,
+            QVBoxLayout,
+        )
+        from qgis.core import QgsField  # noqa: PLC0415
+
+        layer = self._selected_layer
+        feature = self._selected_feature
+        if layer is None or feature is None:
+            self._messages.warning(
+                tr("GeoIfcAssets", "No GIS feature selected. Select a feature before loading.")
+            )
+            return
+
+        if self._dock is None:
+            return
+
+        selected_field_names = self._dock.get_selected_fields()
+        class_pairs = self._dock.get_selected_class_metrics()
+
+        if not selected_field_names and not class_pairs:
+            self._messages.warning(
+                tr("GeoIfcAssets", "No fields or class metrics selected.")
+            )
+            return
+
+        if not self._last_extracted_fields and not self._last_extracted_ifc:
+            self._messages.warning(
+                tr("GeoIfcAssets", "No IFC data extracted yet. Select an IFC feature first.")
+            )
+            return
+
+        # Build updates from fields tree
+        values_to_write: dict[str, Any] = {
+            name: self._last_extracted_fields[name]
+            for name in selected_field_names
+            if name in self._last_extracted_fields
+            and self._last_extracted_fields[name] is not None
+        }
+
+        # Include class metrics from pre-computed discovery results (no re-read of IFC)
+        if class_pairs and self._last_discoveries:
+            from geoifcassets.adapters.ifc.class_extractor import discoveries_to_fields  # noqa: PLC0415
+
+            class_values = discoveries_to_fields(self._last_discoveries, class_pairs)
+            values_to_write.update(class_values)
+
+        if not values_to_write:
+            self._messages.warning(
+                tr("GeoIfcAssets", "All selected fields are empty in the current IFC.")
+            )
+            return
+
+        existing_fields = {f.name() for f in layer.fields()}
+        fields_to_create = [n for n in values_to_write if n not in existing_fields]
+
+        if fields_to_create:
+            dlg = QDialog()
+            dlg.setWindowTitle(tr("GeoIfcAssets", "Create new GIS fields"))
+            layout = QVBoxLayout(dlg)
+            layout.addWidget(QLabel(
+                tr(
+                    "GeoIfcAssets",
+                    "{n} new field(s) will be created in layer «{layer}». Continue?",
+                ).format(n=len(fields_to_create), layer=layer.name())
+            ))
+            try:
+                ok_cancel = QDialogButtonBox.Ok | QDialogButtonBox.Cancel  # type: ignore[attr-defined]
+            except AttributeError:
+                ok_cancel = (
+                    QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+                )
+            buttons = QDialogButtonBox(ok_cancel)
+            buttons.accepted.connect(dlg.accept)
+            buttons.rejected.connect(dlg.reject)
+            layout.addWidget(buttons)
+            if not dlg.exec():
+                return
+
+            layer.startEditing()
+            for field_name in fields_to_create:
+                val = values_to_write[field_name]
+                if isinstance(val, bool):
+                    qtype = QVariant.Bool
+                elif isinstance(val, int):
+                    qtype = QVariant.Int
+                elif isinstance(val, float):
+                    qtype = QVariant.Double
+                else:
+                    qtype = QVariant.String
+                layer.addAttribute(QgsField(field_name, qtype))
+            if not layer.commitChanges():
+                self._messages.warning(
+                    tr("GeoIfcAssets", "Could not create new fields in layer.")
+                )
+                return
+
+        feature_id = feature.id()
+        layer.startEditing()
+        written: list[str] = []
+        for field_name, value in values_to_write.items():
+            field_index = layer.fields().indexOf(field_name)
+            if field_index < 0:
+                continue
+            str_value = str(value) if not isinstance(value, (int, float, bool)) else value
+            if layer.changeAttributeValue(feature_id, field_index, str_value):
+                written.append(field_name)
+
+        self._apply_status_updates(layer, feature_id, success=bool(written))
+        layer.commitChanges()
+
+        msg = tr(
+            "GeoIfcAssets",
+            "{n} field(s) written to feature {fid} in layer «{layer}».",
+        ).format(n=len(written), fid=feature_id, layer=layer.name())
+        self._messages.info(msg)
+        if self._dock is not None:
+            self._dock.add_user_log(msg)
+            self._dock.set_extract_status(msg)
+        self._logger.info(
+            "Extract batch write complete",
+            written=written,
+            layer=layer.name(),
+            feature_id=feature_id,
+        )
+
+    def _on_metric_transfer(self, metric: object) -> None:
+        """Forward a model metric to the BIM→GIS transfer dialog."""
+        from geoifcassets.core.models import ModelMetric  # noqa: PLC0415
+
+        if not isinstance(metric, ModelMetric):
+            return
+        self._show_transfer_dialog({
+            "pset": "IFC Model",
+            "key": metric.label,
+            "value": metric.value,
+        })
+
+    def _apply_status_updates(
+        self,
+        layer: Any,
+        feature_id: int,
+        *,
+        success: bool,
+        error_message: str = "",
+    ) -> None:
+        """Write ifc_status, ifc_updated_at and ifc_error to the layer if those fields exist.
+
+        Must be called within an already-open editing session.
+        """
+        from datetime import datetime, timezone
+
+        from geoifcassets.core.mapping import build_status_updates
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        field_names = [f.name() for f in layer.fields()]
+        updates = build_status_updates(
+            field_names, success=success, timestamp=timestamp, error_message=error_message
+        )
+        for update in updates:
+            idx = layer.fields().indexOf(update.field_name)
+            if idx >= 0:
+                layer.changeAttributeValue(feature_id, idx, update.value)
+
     def _show_transfer_dialog(self, data: dict) -> None:
         """Open a dialog that maps one BIM property value onto a GIS layer field."""
         from qgis.PyQt.QtWidgets import (
@@ -515,6 +883,7 @@ class GeoIfcAssetsPlugin:
         layer.startEditing()
         ok = layer.changeAttributeValue(feature_id, field_index, value)
         if ok:
+            self._apply_status_updates(layer, feature_id, success=True)
             layer.commitChanges()
             msg = tr(
                 "GeoIfcAssets",
@@ -533,11 +902,295 @@ class GeoIfcAssetsPlugin:
             )
         else:
             layer.rollBack()
-            self._messages.warning(
-                tr("GeoIfcAssets", "Could not write value to field «{field}».").format(
-                    field=field_name
+            error_msg = tr(
+                "GeoIfcAssets", "Could not write value to field «{field}»."
+            ).format(field=field_name)
+            if layer.startEditing():
+                self._apply_status_updates(
+                    layer, feature_id, success=False, error_message=error_msg
                 )
+                layer.commitChanges()
+            self._messages.warning(error_msg)
+
+    def _browse_ifc_file(self) -> None:
+        """Open a file dialog and load an IFC directly, without a GIS layer."""
+        from qgis.PyQt.QtWidgets import QFileDialog  # noqa: PLC0415
+
+        from geoifcassets.core.models import IfcReference, IfcReferenceKind  # noqa: PLC0415
+
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            tr("GeoIfcAssets", "Open IFC file"),
+            "",
+            tr("GeoIfcAssets", "IFC files (*.ifc *.ifczip *.ifcxml);;All files (*)"),
+        )
+        if not path:
+            return
+
+        self._current_reference = IfcReference(kind=IfcReferenceKind.PATH, value=path)
+        self._selected_layer = None
+        self._selected_feature = None
+        self._active_storey = None
+
+        if self._viewer_dock is not None:
+            self._viewer_dock.open_reference(self._current_reference)
+        if self._dock is not None:
+            self._dock.switch_to_layer_tab()
+            self._dock.set_active_storey(None)
+            self._dock.set_ifc_actions_enabled(True)
+            self._dock.add_user_log(
+                tr("GeoIfcAssets", "IFC file opened: {name}").format(name=Path(path).name)
             )
+
+        self._logger.info("IFC file opened directly (no GIS layer)", path=path)
+        self._extract_and_show_metrics(path)
+
+    def _show_create_temp_layer_dialog(self, geom_type: str) -> None:
+        """Create a temporary memory layer and activate digitizing so the user draws the geometry."""
+        from qgis.PyQt.QtWidgets import (  # noqa: PLC0415
+            QDialog,
+            QDialogButtonBox,
+            QFormLayout,
+            QLabel,
+            QLineEdit,
+            QVBoxLayout,
+        )
+        from qgis.core import QgsDefaultValue, QgsProject, QgsVectorLayer  # noqa: PLC0415
+
+        if self._current_reference is None:
+            self._messages.warning(tr("GeoIfcAssets", "No IFC file is loaded."))
+            return
+
+        ifc_path = self._current_reference.value
+        ifc_name = Path(ifc_path).name
+
+        dlg = QDialog()
+        dlg.setWindowTitle(
+            tr("GeoIfcAssets", "Create temporary {type} layer").format(type=geom_type)
+        )
+        dlg.setMinimumWidth(420)
+        layout = QVBoxLayout(dlg)
+
+        info = QLabel(
+            tr(
+                "GeoIfcAssets",
+                "A temporary {type} layer will be created. After confirming, draw the"
+                " geometry on the map canvas.",
+            ).format(type=geom_type)
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        form = QFormLayout()
+        name_input = QLineEdit(f"GeoIFC — {ifc_name}")
+        form.addRow(tr("GeoIfcAssets", "Layer name:"), name_input)
+        url_input = QLineEdit(ifc_path)
+        form.addRow(tr("GeoIfcAssets", "IFC path:"), url_input)
+        layout.addLayout(form)
+
+        try:
+            ok_cancel = QDialogButtonBox.Ok | QDialogButtonBox.Cancel  # type: ignore[attr-defined]
+        except AttributeError:
+            ok_cancel = (
+                QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            )
+        buttons = QDialogButtonBox(ok_cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+
+        if not dlg.exec():
+            return
+
+        layer_name = name_input.text().strip() or f"GeoIFC — {ifc_name}"
+        ifc_url_value = url_input.text().strip()
+
+        wkb_type = {"Point": "Point", "Line": "LineString", "Polygon": "Polygon"}.get(
+            geom_type, "Point"
+        )
+        try:
+            project_crs = QgsProject.instance().crs()
+            crs_authid = project_crs.authid() if project_crs.isValid() else "EPSG:4326"
+        except Exception:  # noqa: BLE001
+            crs_authid = "EPSG:4326"
+
+        uri = f"{wkb_type}?crs={crs_authid}&field=ifc_file:string&field=ifc_url:string"
+        layer = QgsVectorLayer(uri, layer_name, "memory")
+        if not layer.isValid():
+            self._messages.warning(tr("GeoIfcAssets", "Could not create temporary layer."))
+            return
+
+        # Pre-fill field defaults so the attribute form shows the IFC reference after drawing
+        file_idx = layer.fields().indexOf("ifc_file")
+        url_idx = layer.fields().indexOf("ifc_url")
+        if file_idx >= 0:
+            layer.setDefaultValueDefinition(
+                file_idx, QgsDefaultValue(_qgis_literal(ifc_name))
+            )
+        if url_idx >= 0:
+            layer.setDefaultValueDefinition(
+                url_idx, QgsDefaultValue(_qgis_literal(ifc_url_value))
+            )
+
+        QgsProject.instance().addMapLayer(layer)
+        self._iface.setActiveLayer(layer)
+        layer.startEditing()
+        _trigger_add_feature(self._iface)
+
+        msg = tr(
+            "GeoIfcAssets",
+            "Layer '{name}' ready. Draw the {type} on the map canvas.",
+        ).format(name=layer_name, type=geom_type)
+        self._messages.info(msg)
+        if self._dock is not None:
+            self._dock.add_user_log(msg)
+            self._dock.refresh_layers()
+        self._logger.info(
+            "Temporary GIS layer created, digitizing activated",
+            layer_name=layer_name,
+            geom_type=geom_type,
+            ifc_path=ifc_url_value,
+        )
+
+    def _show_add_to_layer_dialog(self) -> None:
+        """Activate digitizing on an existing layer; fill IFC fields after the user draws."""
+        from qgis.PyQt.QtWidgets import (  # noqa: PLC0415
+            QComboBox,
+            QDialog,
+            QDialogButtonBox,
+            QFormLayout,
+            QLabel,
+            QLineEdit,
+            QVBoxLayout,
+        )
+
+        if self._current_reference is None:
+            self._messages.warning(tr("GeoIfcAssets", "No IFC file is loaded."))
+            return
+
+        ifc_path = self._current_reference.value
+        ifc_name = Path(ifc_path).name
+
+        canvas = getattr(self._iface, "mapCanvas", lambda: None)()
+        all_layers = getattr(canvas, "layers", lambda: [])()
+        vector_layers = [layer for layer in all_layers if _is_vector_layer(layer)]
+
+        if not vector_layers:
+            self._messages.warning(
+                tr("GeoIfcAssets", "No vector layers are loaded in the project.")
+            )
+            return
+
+        dlg = QDialog()
+        dlg.setWindowTitle(tr("GeoIfcAssets", "Add feature to existing GIS layer"))
+        dlg.setMinimumWidth(440)
+        layout = QVBoxLayout(dlg)
+
+        info = QLabel(
+            tr(
+                "GeoIfcAssets",
+                "Select a layer and confirm the IFC reference. After confirming, draw"
+                " the geometry on the map canvas.",
+            )
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        form = QFormLayout()
+        layer_combo = QComboBox()
+        for lyr in vector_layers:
+            layer_combo.addItem(lyr.name())
+        form.addRow(tr("GeoIfcAssets", "Target layer:"), layer_combo)
+        url_input = QLineEdit(ifc_path)
+        form.addRow(tr("GeoIfcAssets", "IFC path / URL:"), url_input)
+        name_input = QLineEdit(ifc_name)
+        form.addRow(tr("GeoIfcAssets", "IFC file name:"), name_input)
+        layout.addLayout(form)
+
+        note = QLabel(
+            tr(
+                "GeoIfcAssets",
+                "ifc_path or ifc_url and ifc_file will be filled automatically "
+                "after drawing if those fields exist in the layer.",
+            )
+        )
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        try:
+            ok_cancel = QDialogButtonBox.Ok | QDialogButtonBox.Cancel  # type: ignore[attr-defined]
+        except AttributeError:
+            ok_cancel = (
+                QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            )
+        buttons = QDialogButtonBox(ok_cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+
+        if not dlg.exec():
+            return
+
+        target_layer = vector_layers[layer_combo.currentIndex()]
+        ifc_path_value = url_input.text().strip()
+        ifc_name_value = name_input.text().strip()
+
+        if not target_layer.isEditable():
+            if not target_layer.startEditing():
+                self._messages.warning(
+                    tr("GeoIfcAssets", "Layer '{layer}' cannot be edited.").format(
+                        layer=target_layer.name()
+                    )
+                )
+                return
+
+        fields = [f.name() for f in target_layer.fields()]
+
+        def _fill_ifc_on_added(fid: int) -> None:
+            try:
+                target_layer.featureAdded.disconnect(_fill_ifc_on_added)
+            except Exception:  # noqa: BLE001
+                pass
+            is_local = not ifc_path_value.startswith(("http://", "https://"))
+            path_order = ("ifc_path", "ifc_url") if is_local else ("ifc_url", "ifc_path")
+            for fname in path_order:
+                if fname in fields:
+                    idx = target_layer.fields().indexOf(fname)
+                    if idx >= 0:
+                        target_layer.changeAttributeValue(fid, idx, ifc_path_value)
+                    break
+            if "ifc_file" in fields:
+                idx = target_layer.fields().indexOf("ifc_file")
+                if idx >= 0:
+                    target_layer.changeAttributeValue(fid, idx, ifc_name_value)
+            done_msg = tr(
+                "GeoIfcAssets", "Feature added to layer '{layer}' with IFC reference."
+            ).format(layer=target_layer.name())
+            if self._dock is not None:
+                self._dock.add_user_log(done_msg)
+            self._logger.info(
+                "IFC fields filled after feature draw",
+                layer=target_layer.name(),
+                fid=fid,
+                ifc_path=ifc_path_value,
+            )
+
+        target_layer.featureAdded.connect(_fill_ifc_on_added)
+        self._iface.setActiveLayer(target_layer)
+        _trigger_add_feature(self._iface)
+
+        msg = tr(
+            "GeoIfcAssets",
+            "Draw the geometry on the map canvas to add the feature to '{layer}'.",
+        ).format(layer=target_layer.name())
+        self._messages.info(msg)
+        if self._dock is not None:
+            self._dock.add_user_log(msg)
+        self._logger.info(
+            "Digitizing activated for existing GIS layer",
+            layer=target_layer.name(),
+            ifc_path=ifc_path_value,
+        )
 
     def _message_for_read_result(self, result: FeatureIfcReferenceReadResult) -> str:
         if result.status is FeatureReadStatus.OK and result.reference is not None:
@@ -598,3 +1251,15 @@ def _feature_label(feature: Any, ifc_source: str = "") -> str:
     return tr("GeoIfcAssets", "Feature {feature_id}").format(
         feature_id=feature.id()
     )
+
+
+def _qgis_literal(s: str) -> str:
+    """Return a QGIS expression string literal for a Python value."""
+    return "'" + s.replace("'", "''") + "'"
+
+
+def _trigger_add_feature(iface: Any) -> None:
+    """Trigger the QGIS 'Add Feature' map tool on the active layer, if available."""
+    action = getattr(iface, "actionAddFeature", lambda: None)()
+    if action is not None:
+        action.trigger()

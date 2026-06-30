@@ -159,6 +159,7 @@ class IfcHttpServer:
                 payload = json.dumps({
                     "version": version,
                     "ifc_url": "/modelo.ifc" if ifc_path else None,
+                    "ifc_name": Path(ifc_path).name if ifc_path else None,
                 }).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")

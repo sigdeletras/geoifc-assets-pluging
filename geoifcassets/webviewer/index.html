@@ -13,7 +13,34 @@
         <canvas id="viewer-canvas"></canvas>
         <div class="viewport-status" id="viewport-status">Waiting for IFC source</div>
         <button class="view-toggle-btn" id="btn-view-2d" hidden title="Switch to 2D top-down view">2D</button>
+        <div class="measure-toolbar" id="measure-toolbar" hidden>
+          <button class="measure-btn" id="btn-measure-length" title="Measure length — click 2 points">📏 Length</button>
+          <button class="measure-btn" id="btn-measure-area" title="Measure area — click points, right-click to close">⬜ Area</button>
+          <button class="measure-btn" id="btn-section" title="Cross-section clipping plane">✂ Section</button>
+          <button class="measure-btn measure-clear-btn" id="btn-measure-clear" title="Clear measurements and annotations">✕</button>
+        </div>
+        <div class="measure-labels" id="measure-labels"></div>
+        <div class="view-preset-bar" id="view-preset-bar" hidden>
+          <button class="view-preset-btn" data-view="front" title="Front elevation (+Z)">Front</button>
+          <button class="view-preset-btn" data-view="back"  title="Back elevation (−Z)">Back</button>
+          <button class="view-preset-btn" data-view="left"  title="Left elevation (−X)">Left</button>
+          <button class="view-preset-btn" data-view="right" title="Right elevation (+X)">Right</button>
+          <button class="view-preset-btn" data-view="top"   title="Top plan (+Y)">Top</button>
+          <button class="view-preset-btn" data-view="iso"   title="Isometric">ISO</button>
+          <div class="view-preset-sep"></div>
+          <button class="view-preset-btn" id="btn-ortho" title="Toggle orthographic / perspective projection">Ortho</button>
+        </div>
+        <div class="section-controls" id="section-controls" hidden>
+          <span class="section-label">Axis:</span>
+          <button class="section-axis-btn active" data-axis="y">Y</button>
+          <button class="section-axis-btn" data-axis="x">X</button>
+          <button class="section-axis-btn" data-axis="z">Z</button>
+          <input type="range" class="section-slider" id="section-slider" min="0" max="100" value="50">
+          <button class="section-flip-btn" id="section-flip" title="Flip side">↕</button>
+          <button class="section-off-btn" id="section-off" title="Disable section">✕</button>
+        </div>
       </section>
+      <div class="resizer" id="panel-resizer" title="Drag to resize panel"></div>
       <aside class="viewer-panel" aria-label="Element browser">
         <div class="panel-info">
           <span class="label">Source</span>
@@ -23,16 +50,35 @@
         <div class="tree-mode-bar" id="tree-mode-bar" hidden>
           <button class="tree-mode-btn active" id="btn-mode-cat" title="Group by IFC category">Category</button>
           <button class="tree-mode-btn" id="btn-mode-spatial" title="Browse spatial structure (Project → Site → Building → Storey → Elements)" disabled>Spatial</button>
+          <button class="tree-mode-btn tree-collapse-btn" id="btn-collapse-tree" title="Collapse all">⊟</button>
+          <button class="tree-mode-btn tree-export-btn" id="btn-export" title="Export data">⬇</button>
+        </div>
+        <div class="export-menu" id="export-menu" hidden>
+          <div class="export-group-label">Spatial tree</div>
+          <button class="export-item" id="export-spatial-json">JSON</button>
+          <div class="export-group-label">Categories</div>
+          <button class="export-item" id="export-cat-json">JSON</button>
+          <div class="export-group-label">Selected element</div>
+          <button class="export-item" id="export-props-json">JSON</button>
+          <button class="export-item" id="export-props-csv">CSV</button>
         </div>
         <div class="storey-bar" id="storey-bar" hidden aria-label="Floor / storey filter"></div>
+        <div class="search-bar" id="tree-search-bar" hidden>
+          <input type="search" class="search-input" id="tree-search-input" placeholder="Filter elements…" aria-label="Filter elements" autocomplete="off">
+          <button class="search-clear" id="tree-search-clear" title="Clear filter" hidden>✕</button>
+        </div>
         <div id="element-tree" class="panel-tree" role="tree" aria-label="IFC elements">
           <p class="panel-hint">Load an IFC model to browse elements.</p>
+        </div>
+        <div class="search-bar" id="props-search-bar" hidden>
+          <input type="search" class="search-input" id="props-search-input" placeholder="Filter properties…" aria-label="Filter properties" autocomplete="off">
+          <button class="search-clear" id="props-search-clear" title="Clear filter" hidden>✕</button>
         </div>
         <div id="element-props" class="panel-props" hidden aria-label="Element properties"></div>
         <div class="panel-status">
           <span id="source-status">Idle</span>
         </div>
       </aside>
-    </main>
+    </main>
   </body>
 </html>

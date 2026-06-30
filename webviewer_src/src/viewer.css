@@ -15,7 +15,7 @@ body {
 
 .viewer-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 270px;
+  grid-template-columns: minmax(0, 1fr) 4px 270px;
   height: 100%;
   min-height: 320px;
 }
@@ -56,6 +56,21 @@ body {
   overflow: hidden;
   background: #ffffff;
   border-left: 1px solid #e0e6eb;
+  position: relative;
+}
+
+/* ── Panel resizer handle ──────────────────────────────────────────────────── */
+
+.resizer {
+  cursor: col-resize;
+  background: #e0e6eb;
+  transition: background 0.15s;
+  z-index: 5;
+}
+
+.resizer:hover,
+.resizer.dragging {
+  background: #2471a3;
 }
 
 /* Info bar: source name */
@@ -136,6 +151,58 @@ strong {
   cursor: default;
 }
 
+.tree-collapse-btn,
+.tree-export-btn {
+  flex: none;
+  padding: 4px 9px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* ── Export dropdown ───────────────────────────────────────────────────────── */
+
+.export-menu {
+  position: absolute;
+  background: #ffffff;
+  border: 1px solid #ccd7e0;
+  border-radius: 5px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.13);
+  z-index: 200;
+  min-width: 180px;
+  padding: 4px 0;
+}
+
+.export-group-label {
+  padding: 6px 12px 2px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8898a9;
+}
+
+.export-item {
+  display: block;
+  width: 100%;
+  padding: 6px 20px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+  color: #2e4053;
+  cursor: pointer;
+}
+
+.export-item:hover:not(:disabled) {
+  background: #edf3fb;
+  color: #1a5276;
+}
+
+.export-item:disabled {
+  color: #b0bec5;
+  cursor: default;
+}
+
 /* ── Element tree ──────────────────────────────────────────────────────────── */
 
 .panel-tree {
@@ -149,6 +216,56 @@ strong {
   color: #8898a9;
   font-size: 12px;
   line-height: 1.5;
+}
+
+/* ── Search bars (tree + props) ────────────────────────────────────────────── */
+
+.search-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-bottom: 1px solid #e0e6eb;
+  background: #f4f7fa;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 7px;
+  border: 1px solid #cfd7df;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #2e4053;
+  background: #ffffff;
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: #2471a3;
+  box-shadow: 0 0 0 2px rgba(36, 113, 163, 0.15);
+}
+
+.search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-clear {
+  flex-shrink: 0;
+  padding: 3px 6px;
+  border: 1px solid #cfd7df;
+  border-radius: 4px;
+  background: transparent;
+  color: #5d6d7e;
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.search-clear:hover {
+  background: #e8edf1;
+  color: #2e4053;
 }
 
 /* Category / spatial group (<details>) */
@@ -328,6 +445,31 @@ strong {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   background: #edf3fb;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pset-name:hover {
+  background: #d4e4f7;
+}
+
+.pset-chevron::before {
+  content: "▼";
+  font-size: 8px;
+  display: inline-block;
+  transition: transform 0.15s ease;
+  line-height: 1;
+}
+
+.pset-block.collapsed .pset-chevron::before {
+  transform: rotate(-90deg);
+}
+
+.pset-block.collapsed .pset-rows {
+  display: none;
 }
 
 .prop-row {
@@ -344,11 +486,29 @@ strong {
 
 .prop-key {
   flex-shrink: 0;
-  width: 110px;
+  width: var(--prop-key-width, 110px);
   color: #5d6d7e;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.prop-col-resizer {
+  flex-shrink: 0;
+  width: 5px;
+  cursor: col-resize;
+  background: transparent;
+  align-self: stretch;
+  transition: background 0.1s;
+}
+
+.prop-row:hover .prop-col-resizer {
+  background: #dce8f5;
+}
+
+.prop-col-resizer:hover,
+.prop-col-resizer.dragging {
+  background: #2471a3;
 }
 
 .prop-val {
@@ -438,6 +598,180 @@ strong {
   color: #ffffff;
 }
 
+/* ── Measurement toolbar ───────────────────────────────────────────────────── */
+
+.measure-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  gap: 4px;
+  z-index: 10;
+}
+
+.measure-btn {
+  padding: 4px 9px;
+  border: 1px solid #cfd7df;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  color: #2e4053;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.measure-btn:hover {
+  background: #2471a3;
+  color: #ffffff;
+  border-color: #2471a3;
+}
+
+.measure-btn.active {
+  background: #e67e22;
+  color: #ffffff;
+  border-color: #e67e22;
+}
+
+.measure-clear-btn {
+  font-size: 11px;
+  padding: 4px 7px;
+}
+
+.measure-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 15;
+}
+
+.measure-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.75);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  font-family: Arial, sans-serif;
+}
+
+/* ── View preset bar ───────────────────────────────────────────────────────── */
+
+.view-preset-bar {
+  position: absolute;
+  top: 52px;
+  left: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-width: 260px;
+  z-index: 10;
+}
+
+.view-preset-btn {
+  padding: 3px 8px;
+  border: 1px solid rgba(36, 113, 163, 0.45);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.88);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #1a5276;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+}
+
+.view-preset-btn:hover {
+  background: rgba(36, 113, 163, 0.15);
+  border-color: #2471a3;
+}
+
+.view-preset-btn.active {
+  background: #2471a3;
+  color: #ffffff;
+  border-color: #2471a3;
+}
+
+.view-preset-sep {
+  width: 1px;
+  height: 20px;
+  background: #cfd7df;
+  align-self: center;
+  margin: 0 1px;
+}
+
+/* ── Section controls ──────────────────────────────────────────────────────── */
+
+.section-controls {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.93);
+  border: 1px solid #cfd7df;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  z-index: 10;
+}
+
+.section-label {
+  color: #5d6d7e;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.section-axis-btn {
+  padding: 2px 8px;
+  border: 1px solid #cfd7df;
+  border-radius: 3px;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #2e4053;
+}
+
+.section-axis-btn:hover,
+.section-axis-btn.active {
+  background: #2471a3;
+  color: #ffffff;
+  border-color: #2471a3;
+}
+
+.section-slider {
+  width: 110px;
+  cursor: pointer;
+  accent-color: #2471a3;
+}
+
+.section-flip-btn,
+.section-off-btn {
+  padding: 2px 7px;
+  border: 1px solid #cfd7df;
+  border-radius: 3px;
+  background: transparent;
+  font-size: 12px;
+  cursor: pointer;
+  color: #2e4053;
+}
+
+.section-flip-btn:hover {
+  background: #edf3fb;
+  border-color: #2471a3;
+}
+
+.section-off-btn:hover {
+  background: #fdecea;
+  color: #c0392b;
+  border-color: #e74c3c;
+}
+
 /* ── 2D / 3D view toggle ───────────────────────────────────────────────────── */
 
 .view-toggle-btn {
@@ -479,6 +813,10 @@ strong {
   .viewport {
     border-right: 0;
     border-bottom: 1px solid #cfd7df;
+  }
+
+  .resizer {
+    display: none;
   }
 
   .viewer-panel {

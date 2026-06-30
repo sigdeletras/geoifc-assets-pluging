@@ -137,8 +137,31 @@ const elementPropsEl = document.getElementById("element-props") as HTMLElement;
 const treeModeBar = document.getElementById("tree-mode-bar") as HTMLElement;
 const btnModeCat = document.getElementById("btn-mode-cat") as HTMLButtonElement;
 const btnModeSpatial = document.getElementById("btn-mode-spatial") as HTMLButtonElement;
+const btnCollapseTree = document.getElementById("btn-collapse-tree") as HTMLButtonElement;
+const btnExport = document.getElementById("btn-export") as HTMLButtonElement;
+const exportMenu = document.getElementById("export-menu") as HTMLElement;
 const storeyBarEl = document.getElementById("storey-bar") as HTMLElement;
 const btn2DView = document.getElementById("btn-view-2d") as HTMLButtonElement;
+const treeSearchBarEl = document.getElementById("tree-search-bar") as HTMLElement;
+const treeSearchInputEl = document.getElementById("tree-search-input") as HTMLInputElement;
+const treeSearchClearEl = document.getElementById("tree-search-clear") as HTMLButtonElement;
+const propsSearchBarEl = document.getElementById("props-search-bar") as HTMLElement;
+const propsSearchInputEl = document.getElementById("props-search-input") as HTMLInputElement;
+const propsSearchClearEl = document.getElementById("props-search-clear") as HTMLButtonElement;
+const measureToolbarEl = document.getElementById("measure-toolbar") as HTMLElement;
+const btnMeasureLength = document.getElementById("btn-measure-length") as HTMLButtonElement;
+const btnMeasureArea = document.getElementById("btn-measure-area") as HTMLButtonElement;
+const btnMeasureClear = document.getElementById("btn-measure-clear") as HTMLButtonElement;
+const measureLabelsEl = document.getElementById("measure-labels") as HTMLElement;
+const viewPresetBarEl = document.getElementById("view-preset-bar") as HTMLElement;
+const viewPresetBtns = document.querySelectorAll<HTMLButtonElement>(".view-preset-btn[data-view]");
+const btnOrtho = document.getElementById("btn-ortho") as HTMLButtonElement;
+const btnSection = document.getElementById("btn-section") as HTMLButtonElement;
+const sectionControlsEl = document.getElementById("section-controls") as HTMLElement;
+const sectionSliderEl = document.getElementById("section-slider") as HTMLInputElement;
+const sectionFlipBtn = document.getElementById("section-flip") as HTMLButtonElement;
+const sectionOffBtn = document.getElementById("section-off") as HTMLButtonElement;
+const sectionAxisBtns = document.querySelectorAll<HTMLButtonElement>(".section-axis-btn");
 
 // ── Viewer state ──────────────────────────────────────────────────────────────
 
@@ -155,6 +178,9 @@ let controls: OrbitControls | null = null;
 let elementsByCategory: Map<string, IFCElement[]> | null = null;
 const propSetIndex = new Map<number, number[]>();
 let selectedExpressId: number | null = null;
+
+// Last rendered element props (for export)
+let _lastProps: { expressId: number; name: string; category: string; direct: PropEntry[]; psets: PSet[] } | null = null;
 const savedMaterials = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
 
 // Spatial tree state (Phase B)
@@ -172,7 +198,37 @@ let saved3DCamera: { pos: THREE.Vector3; target: THREE.Vector3 } | null = null;
 
 // Ray-casting (Phase B)
 const raycaster = new THREE.Raycaster();
+
+// Measurement state
+type MeasureMode = "none" | "length" | "area";
+let measureMode: MeasureMode = "none";
+let measurePoints: THREE.Vector3[] = [];
+let measureGroup: THREE.Group | null = null;
+const measureLabelData: Array<{ pos: THREE.Vector3; el: HTMLDivElement }> = [];
 let _mouseDownPos: { x: number; y: number } | null = null;
+
+// Orthographic / view-preset state
+type ViewPreset = "front" | "back" | "left" | "right" | "top" | "iso";
+const VIEW_PRESETS: Record<ViewPreset, { dir: THREE.Vector3; up: THREE.Vector3 }> = {
+  front: { dir: new THREE.Vector3(0, 0, 1),  up: new THREE.Vector3(0, 1, 0) },
+  back:  { dir: new THREE.Vector3(0, 0, -1), up: new THREE.Vector3(0, 1, 0) },
+  left:  { dir: new THREE.Vector3(-1, 0, 0), up: new THREE.Vector3(0, 1, 0) },
+  right: { dir: new THREE.Vector3(1, 0, 0),  up: new THREE.Vector3(0, 1, 0) },
+  top:   { dir: new THREE.Vector3(0, 1, 0),  up: new THREE.Vector3(0, 0, -1) },
+  iso:   { dir: new THREE.Vector3(1, 1, 1).normalize(), up: new THREE.Vector3(0, 1, 0) },
+};
+let orthoCamera: THREE.OrthographicCamera | null = null;
+let useOrtho = false;
+let renderCamera: THREE.Camera | null = null;
+let cameraAnimTarget: { pos: THREE.Vector3; target: THREE.Vector3 } | null = null;
+
+// Section state
+let sectionActive = false;
+let sectionAxis: "x" | "y" | "z" = "y";
+let sectionFlipped = false;
+let sectionPosition = 50; // 0..100 along selected axis
+const sectionPlane = new THREE.Plane();
+
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 
@@ -229,8 +285,44 @@ function resize(): void {
 function animate(): void {
   if (!renderer || !scene || !camera || !controls) return;
   resize();
+
+  if (cameraAnimTarget) {
+    const t = 0.13;
+    camera.position.lerp(cameraAnimTarget.pos, t);
+    controls.target.lerp(cameraAnimTarget.target, t);
+    if (
+      camera.position.distanceTo(cameraAnimTarget.pos) < 0.01 &&
+      controls.target.distanceTo(cameraAnimTarget.target) < 0.01
+    ) {
+      camera.position.copy(cameraAnimTarget.pos);
+      controls.target.copy(cameraAnimTarget.target);
+      cameraAnimTarget = null;
+    }
+  }
+
   controls.update();
-  renderer.render(scene, camera);
+
+  if (useOrtho && orthoCamera) {
+    orthoCamera.position.copy(camera.position);
+    orthoCamera.quaternion.copy(camera.quaternion);
+    const dist = camera.position.distanceTo(controls.target);
+    const halfH = dist * Math.tan((camera.fov * Math.PI) / 360);
+    const rect = canvas.getBoundingClientRect();
+    const aspect = rect.width / Math.max(1, rect.height);
+    orthoCamera.left = -halfH * aspect;
+    orthoCamera.right = halfH * aspect;
+    orthoCamera.top = halfH;
+    orthoCamera.bottom = -halfH;
+    orthoCamera.near = camera.near;
+    orthoCamera.far = camera.far;
+    orthoCamera.updateProjectionMatrix();
+    renderCamera = orthoCamera;
+  } else {
+    renderCamera = camera;
+  }
+
+  renderer.render(scene, renderCamera);
+  updateMeasureLabels();
   window.requestAnimationFrame(animate);
 }
 
@@ -310,13 +402,18 @@ canvas.addEventListener("click", (e) => {
   // Ignore drags (orbit/pan); only act on genuine clicks
   if (Math.sqrt(dx * dx + dy * dy) > 4) return;
 
+  if (measureMode !== "none") {
+    handleMeasureClick(e);
+    return;
+  }
+
   const rect = canvas.getBoundingClientRect();
   raycaster.setFromCamera(
     new THREE.Vector2(
       ((e.clientX - rect.left) / rect.width) * 2 - 1,
       -((e.clientY - rect.top) / rect.height) * 2 + 1,
     ),
-    camera,
+    renderCamera ?? camera,
   );
 
   const meshes: THREE.Object3D[] = [];
@@ -331,12 +428,22 @@ canvas.addEventListener("click", (e) => {
   }
 });
 
+canvas.addEventListener("contextmenu", (e) => {
+  if (measureMode === "area" && measurePoints.length >= 3) {
+    e.preventDefault();
+    finalizeAreaMeasurement();
+  }
+});
+
 // ── IFC attribute helpers ─────────────────────────────────────────────────────
 
 function extractAttrValue(val: unknown): string | null {
   if (val === null || val === undefined) return null;
   if (typeof val === "string") return val || null;
-  if (typeof val === "number") return String(val);
+  if (typeof val === "number") {
+    if (Number.isInteger(val)) return String(val);
+    return parseFloat(val.toFixed(2)).toString();
+  }
   if (typeof val === "boolean") return String(val);
   if (Array.isArray(val)) return null;
   if (typeof val === "object") {
@@ -346,6 +453,10 @@ function extractAttrValue(val: unknown): string | null {
       const v = obj["value"];
       if (v === null || v === undefined || v === "") return null;
       if (typeof v === "object") return null;
+      if (typeof v === "number") {
+        if (Number.isInteger(v)) return String(v);
+        return parseFloat(v.toFixed(2)).toString();
+      }
       return String(v);
     }
   }
@@ -424,7 +535,7 @@ function readPropertySets(api: IfcAPI, modelId: number, expressId: number): PSet
           if (propVal === null) {
             for (const qKey of [
               "LengthValue", "AreaValue", "VolumeValue",
-              "CountValue", "WeightValue", "TimeValue",
+              "CountValue", "WeightValue", "TimeValue", "NumberValue",
             ]) {
               const qv = extractAttrValue(prop[qKey]);
               if (qv !== null) { propVal = qv; break; }
@@ -640,10 +751,24 @@ function clearTreeUI(): void {
   treeModeBar.hidden = true;
   storeyBarEl.hidden = true;
   btn2DView.hidden = true;
+  measureToolbarEl.hidden = true;
+  viewPresetBarEl.hidden = true;
+  setMeasureMode("none");
+  clearMeasurements();
+  disableSection();
+  setOrthoMode(false);
+  cameraAnimTarget = null;
+  treeSearchBarEl.hidden = true;
+  treeSearchInputEl.value = "";
+  treeSearchClearEl.hidden = true;
+  propsSearchBarEl.hidden = true;
+  propsSearchInputEl.value = "";
+  propsSearchClearEl.hidden = true;
   elementTreeEl.innerHTML =
     '<p class="panel-hint">Load an IFC model to browse elements.</p>';
   elementPropsEl.hidden = true;
   elementPropsEl.innerHTML = "";
+  _lastProps = null;
 }
 
 function reset2DState(): void {
@@ -819,11 +944,16 @@ function switchViewMode(mode: ViewMode): void {
   btnModeCat.classList.toggle("active", mode === "category");
   btnModeSpatial.classList.toggle("active", mode === "spatial");
   btnModeSpatial.disabled = spatialRoot === null;
+  treeSearchInputEl.value = "";
+  treeSearchClearEl.hidden = true;
   renderActiveTree();
 }
 
 btnModeCat.addEventListener("click", () => switchViewMode("category"));
 btnModeSpatial.addEventListener("click", () => switchViewMode("spatial"));
+btnCollapseTree.addEventListener("click", () => {
+  elementTreeEl.querySelectorAll<HTMLDetailsElement>("details").forEach((d) => { d.open = false; });
+});
 
 function renderActiveTree(): void {
   if (viewMode === "spatial" && spatialRoot !== null) {
@@ -831,6 +961,8 @@ function renderActiveTree(): void {
   } else {
     renderCategoryTree();
   }
+  const q = treeSearchInputEl.value.trim();
+  if (q) applyTreeFilter(q);
 }
 
 // ── Category tree (Phase A) ───────────────────────────────────────────────────
@@ -852,7 +984,7 @@ function renderCategoryTree(): void {
 
     const details = document.createElement("details");
     details.className = "tree-cat";
-    details.open = true;
+    details.open = false;
 
     const summary = document.createElement("summary");
     summary.innerHTML =
@@ -906,7 +1038,7 @@ function appendSpatialNode(
 
   const details = document.createElement("details");
   details.className = `tree-cat snode-${node.typeCss}`;
-  details.open = node.typeCss !== "space"; // collapse spaces by default
+  details.open = false;
 
   const summary = document.createElement("summary");
   summary.innerHTML =
@@ -938,8 +1070,9 @@ function makeElementLi(el: IFCElement): HTMLLIElement {
   const btn = document.createElement("button");
   btn.className = "tree-item";
   if (el.expressId === selectedExpressId) btn.classList.add("selected");
-  btn.textContent = el.name;
-  btn.title = `${el.name}  (#${el.expressId})`;
+  const label = el.name.trim() || `${el.category} #${el.expressId}`;
+  btn.textContent = label;
+  btn.title = `${label}  (#${el.expressId})`;
   btn.dataset.eid = String(el.expressId);
   btn.addEventListener("click", () => selectElement(el.expressId));
   li.appendChild(btn);
@@ -949,12 +1082,16 @@ function makeElementLi(el: IFCElement): HTMLLIElement {
 // ── Element selection ─────────────────────────────────────────────────────────
 
 function selectElement(expressId: number): void {
+  clearMeasurements();
   if (selectedExpressId === expressId) {
     // Toggle deselection
     selectedExpressId = null;
     clearHighlight();
     elementPropsEl.hidden = true;
     elementPropsEl.innerHTML = "";
+    propsSearchBarEl.hidden = true;
+    propsSearchInputEl.value = "";
+    propsSearchClearEl.hidden = true;
     document
       .querySelectorAll(".tree-item.selected")
       .forEach((el) => el.classList.remove("selected"));
@@ -992,14 +1129,14 @@ function selectElement(expressId: number): void {
 
 // ── Props rendering ───────────────────────────────────────────────────────────
 
-function propRow(pset: string, key: string, value: string): string {
+// v1: _pset kept for when the transfer button is re-enabled (rename back to pset and add the button line)
+function propRow(_pset: string, key: string, value: string): string {
   return (
     `<div class="prop-row">` +
     `<span class="prop-key">${escHtml(key)}</span>` +
+    `<div class="prop-col-resizer"></div>` +
     `<span class="prop-val">${escHtml(value)}</span>` +
-    `<button class="prop-transfer" ` +
-    `data-pset="${escHtml(pset)}" data-key="${escHtml(key)}" data-val="${escHtml(value)}" ` +
-    `title="Transfer to GIS field">→</button>` +
+    // restore: `<button class="prop-transfer" data-pset="${escHtml(_pset)}" data-key="${escHtml(key)}" data-val="${escHtml(value)}" title="Transfer to GIS field">→</button>` +
     `</div>`
   );
 }
@@ -1027,13 +1164,290 @@ function transferProp(pset: string, key: string, value: string, btn: HTMLButtonE
     });
 }
 
+// ── Measurement tools ─────────────────────────────────────────────────────────
+
+function setMeasureMode(mode: MeasureMode): void {
+  measureMode = mode;
+  canvas.style.cursor = mode !== "none" ? "crosshair" : "";
+  btnMeasureLength.classList.toggle("active", mode === "length");
+  btnMeasureArea.classList.toggle("active", mode === "area");
+  measurePoints = [];
+}
+
+function clearMeasurements(): void {
+  if (measureGroup && scene) {
+    scene.remove(measureGroup);
+    measureGroup.traverse((obj) => {
+      const m = obj as THREE.Mesh;
+      if (m.geometry) m.geometry.dispose();
+    });
+    measureGroup = null;
+  }
+  measurePoints = [];
+  measureLabelData.length = 0;
+  measureLabelsEl.innerHTML = "";
+}
+
+function ensureMeasureGroup(): THREE.Group {
+  if (!measureGroup || !scene) {
+    measureGroup = new THREE.Group();
+    scene!.add(measureGroup);
+  }
+  return measureGroup;
+}
+
+function addMeasureAnchor(group: THREE.Group, pt: THREE.Vector3): void {
+  const geo = new THREE.SphereGeometry(0.05, 8, 6);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xff6b35, depthTest: false });
+  const sphere = new THREE.Mesh(geo, mat);
+  sphere.position.copy(pt);
+  sphere.renderOrder = 1001;
+  group.add(sphere);
+}
+
+function addMeasureLabel(pos: THREE.Vector3, text: string): void {
+  const el = document.createElement("div");
+  el.className = "measure-label";
+  el.textContent = text;
+  measureLabelsEl.appendChild(el);
+  measureLabelData.push({ pos: pos.clone(), el });
+}
+
+function updateMeasureLabels(): void {
+  const cam = renderCamera ?? camera;
+  if (!cam || measureLabelData.length === 0) return;
+  const rect = canvas.getBoundingClientRect();
+  for (const { pos, el } of measureLabelData) {
+    const v = pos.clone().project(cam);
+    if (v.z > 1) { el.style.display = "none"; continue; }
+    el.style.display = "";
+    el.style.left = `${(v.x * 0.5 + 0.5) * rect.width}px`;
+    el.style.top = `${(-v.y * 0.5 + 0.5) * rect.height}px`;
+  }
+}
+
+// ── Section (clipping plane) ──────────────────────────────────────────────────
+
+function getModelBoundingBox(): THREE.Box3 {
+  const box = new THREE.Box3();
+  if (modelGroup) box.expandByObject(modelGroup);
+  return box;
+}
+
+function updateSectionPlane(): void {
+  if (!renderer || !sectionActive) return;
+  const box = getModelBoundingBox();
+  if (box.isEmpty()) return;
+
+  let minVal: number, maxVal: number;
+  if (sectionAxis === "x") { minVal = box.min.x; maxVal = box.max.x; }
+  else if (sectionAxis === "z") { minVal = box.min.z; maxVal = box.max.z; }
+  else { minVal = box.min.y; maxVal = box.max.y; }
+
+  const threshold = minVal + (maxVal - minVal) * (sectionPosition / 100);
+  // not-flipped: show y < threshold (clip upper) → normal=(0,-1,0), const=threshold
+  // flipped: show y > threshold (clip lower) → normal=(0,+1,0), const=-threshold
+  const axisNormal: Record<string, THREE.Vector3> = {
+    x: new THREE.Vector3(1, 0, 0),
+    y: new THREE.Vector3(0, 1, 0),
+    z: new THREE.Vector3(0, 0, 1),
+  };
+  const sign = sectionFlipped ? 1 : -1;
+  sectionPlane.set(axisNormal[sectionAxis].clone().multiplyScalar(sign), -sign * threshold);
+  renderer.clippingPlanes = [sectionPlane];
+}
+
+function enableSection(): void {
+  if (!renderer) return;
+  sectionActive = true;
+  sectionControlsEl.hidden = false;
+  btnSection.classList.add("active");
+  updateSectionPlane();
+}
+
+function disableSection(): void {
+  if (!renderer) return;
+  sectionActive = false;
+  renderer.clippingPlanes = [];
+  sectionControlsEl.hidden = true;
+  btnSection.classList.remove("active");
+}
+
+// ── View presets + orthographic camera ───────────────────────────────────────
+
+function setOrthoMode(enabled: boolean): void {
+  useOrtho = enabled;
+  if (enabled && !orthoCamera) {
+    orthoCamera = new THREE.OrthographicCamera(-50, 50, 50, -50, 0.001, 100000);
+  }
+  btnOrtho.classList.toggle("active", enabled);
+}
+
+function snapToView(preset: ViewPreset): void {
+  if (!camera || !controls || !modelGroup) return;
+  const box = getModelBoundingBox();
+  if (box.isEmpty()) return;
+
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const fovRad = (camera.fov * Math.PI) / 180;
+  const distance = (maxDim * 0.6) / Math.tan(fovRad * 0.5);
+
+  const { dir, up } = VIEW_PRESETS[preset];
+  const targetPos = center.clone().addScaledVector(dir, distance);
+
+  camera.up.copy(up);
+  controls.update();
+
+  cameraAnimTarget = { pos: targetPos, target: center.clone() };
+}
+
+function computePolygonArea(pts: THREE.Vector3[]): number {
+  let area = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const v1 = pts[i].clone().sub(pts[0]);
+    const v2 = pts[i + 1].clone().sub(pts[0]);
+    area += v1.clone().cross(v2).length() * 0.5;
+  }
+  return area;
+}
+
+function finalizeLengthMeasurement(): void {
+  const [p1, p2] = measurePoints;
+  const dist = parseFloat(p1.distanceTo(p2).toFixed(2));
+  const group = ensureMeasureGroup();
+  const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+  const mat = new THREE.LineBasicMaterial({ color: 0xff6b35, depthTest: false });
+  const line = new THREE.Line(geo, mat);
+  line.renderOrder = 1000;
+  group.add(line);
+  const mid = p1.clone().lerp(p2, 0.5);
+  addMeasureLabel(mid, `${dist} m`);
+  measurePoints = [];
+}
+
+function finalizeAreaMeasurement(): void {
+  if (measurePoints.length < 3) return;
+  const pts = [...measurePoints];
+  const group = ensureMeasureGroup();
+
+  const verts: number[] = [];
+  for (let i = 1; i < pts.length - 1; i++) {
+    verts.push(pts[0].x, pts[0].y, pts[0].z);
+    verts.push(pts[i].x, pts[i].y, pts[i].z);
+    verts.push(pts[i + 1].x, pts[i + 1].y, pts[i + 1].z);
+  }
+  const fillGeo = new THREE.BufferGeometry();
+  fillGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(verts), 3));
+  const fillMat = new THREE.MeshBasicMaterial({
+    color: 0x2196f3, transparent: true, opacity: 0.25,
+    side: THREE.DoubleSide, depthTest: false,
+  });
+  const fill = new THREE.Mesh(fillGeo, fillMat);
+  fill.renderOrder = 999;
+  group.add(fill);
+
+  const closedPts = [...pts, pts[0]];
+  const outlineGeo = new THREE.BufferGeometry().setFromPoints(closedPts);
+  const outlineMat = new THREE.LineBasicMaterial({ color: 0x1565c0, depthTest: false });
+  const outline = new THREE.Line(outlineGeo, outlineMat);
+  outline.renderOrder = 1000;
+  group.add(outline);
+
+  const centroid = pts.reduce((acc, p) => acc.add(p), new THREE.Vector3())
+    .divideScalar(pts.length);
+  addMeasureLabel(centroid, `${parseFloat(computePolygonArea(pts).toFixed(2))} m²`);
+  measurePoints = [];
+}
+
+function handleMeasureClick(e: MouseEvent): void {
+  if (!camera || !modelGroup) return;
+  const rect = canvas.getBoundingClientRect();
+  raycaster.setFromCamera(
+    new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1,
+    ),
+    renderCamera ?? camera,
+  );
+  const meshes: THREE.Object3D[] = [];
+  modelGroup.traverse((obj) => { if ((obj as THREE.Mesh).isMesh) meshes.push(obj); });
+  const hits = raycaster.intersectObjects(meshes, false);
+  if (hits.length === 0) return;
+  const pt = hits[0].point.clone();
+
+  measurePoints.push(pt);
+  addMeasureAnchor(ensureMeasureGroup(), pt);
+  if (measureMode === "length" && measurePoints.length === 2) finalizeLengthMeasurement();
+}
+
+// ── Search / filter ───────────────────────────────────────────────────────────
+
+function applyTreeFilter(query: string): void {
+  const q = query.toLowerCase().trim();
+  if (!q) {
+    elementTreeEl.querySelectorAll<HTMLElement>("li").forEach((li) => { li.hidden = false; });
+    elementTreeEl.querySelectorAll<HTMLDetailsElement>(".tree-cat").forEach((d) => { d.hidden = false; });
+    return;
+  }
+  elementTreeEl.querySelectorAll<HTMLButtonElement>(".tree-item").forEach((btn) => {
+    (btn.parentElement as HTMLLIElement).hidden = !btn.textContent!.toLowerCase().includes(q);
+  });
+  const allDetails = Array.from(
+    elementTreeEl.querySelectorAll<HTMLDetailsElement>(".tree-cat"),
+  ).reverse();
+  for (const details of allDetails) {
+    const hasVisible = details.querySelectorAll<HTMLElement>("li:not([hidden])").length > 0;
+    details.hidden = !hasVisible;
+    if (hasVisible) details.open = true;
+  }
+}
+
+function applyPropsFilter(query: string): void {
+  const q = query.toLowerCase().trim();
+  if (!q) {
+    elementPropsEl.querySelectorAll<HTMLElement>(".prop-row").forEach((r) => { r.hidden = false; });
+    elementPropsEl.querySelectorAll<HTMLElement>(".pset-block").forEach((b) => { b.hidden = false; });
+    return;
+  }
+  elementPropsEl.querySelectorAll<HTMLElement>(".prop-row").forEach((row) => {
+    const key = row.querySelector(".prop-key")?.textContent?.toLowerCase() ?? "";
+    const val = row.querySelector(".prop-val")?.textContent?.toLowerCase() ?? "";
+    row.hidden = !key.includes(q) && !val.includes(q);
+  });
+  elementPropsEl.querySelectorAll<HTMLElement>(".pset-block").forEach((block) => {
+    const visibleRows = block.querySelectorAll<HTMLElement>(".prop-row:not([hidden])").length;
+    block.hidden = visibleRows === 0;
+    if (visibleRows > 0) block.classList.remove("collapsed");
+  });
+}
+
+function psetGroupHtml(label: string, rows: string[]): string {
+  const isCollapsed = localStorage.getItem(`geoifc.pset.${label}`) === "1";
+  const collapsedClass = isCollapsed ? " collapsed" : "";
+  return (
+    `<div class="pset-block${collapsedClass}">` +
+    `<div class="pset-name" data-label="${escHtml(label)}">` +
+    `<span class="pset-chevron"></span>` +
+    `${escHtml(label)}` +
+    `</div>` +
+    `<div class="pset-rows">` +
+    rows.join("\n") +
+    `</div>` +
+    `</div>`
+  );
+}
+
 function renderProps(expressId: number, direct: PropEntry[], psets: PSet[]): void {
   const el = elementsByCategory
     ? [...elementsByCategory.values()].flat().find((e) => e.expressId === expressId)
     : null;
 
-  const name = el?.name ?? `Element #${expressId}`;
+  const rawName = el?.name ?? "";
   const category = el?.category ?? "Unknown";
+  const name = rawName.trim() || `${category} #${expressId}`;
+  _lastProps = { expressId, name, category, direct, psets };
 
   const parts: string[] = [];
   parts.push(
@@ -1045,21 +1459,13 @@ function renderProps(expressId: number, direct: PropEntry[], psets: PSet[]): voi
   );
 
   if (direct.length > 0) {
-    parts.push(`<div class="pset-block"><div class="pset-name">Attributes</div>`);
-    for (const { key, value } of direct) {
-      parts.push(propRow("", key, value));
-    }
-    parts.push(`</div>`);
+    const rows = direct.map(({ key, value }) => propRow("", key, value));
+    parts.push(psetGroupHtml("Attributes", rows));
   }
 
   for (const pset of psets) {
-    parts.push(
-      `<div class="pset-block"><div class="pset-name">${escHtml(pset.name)}</div>`,
-    );
-    for (const { key, value } of pset.props) {
-      parts.push(propRow(pset.name, key, value));
-    }
-    parts.push(`</div>`);
+    const rows = pset.props.map(({ key, value }) => propRow(pset.name, key, value));
+    parts.push(psetGroupHtml(pset.name, rows));
   }
 
   if (direct.length === 0 && psets.length === 0) {
@@ -1076,6 +1482,22 @@ function renderProps(expressId: number, direct: PropEntry[], psets: PSet[]): voi
     });
   });
 
+  elementPropsEl.querySelectorAll<HTMLElement>(".pset-name").forEach((nameEl) => {
+    const block = nameEl.closest<HTMLElement>(".pset-block")!;
+    nameEl.addEventListener("click", () => {
+      const label = nameEl.dataset.label ?? "";
+      block.classList.toggle("collapsed");
+      if (block.classList.contains("collapsed")) {
+        localStorage.setItem(`geoifc.pset.${label}`, "1");
+      } else {
+        localStorage.removeItem(`geoifc.pset.${label}`);
+      }
+    });
+  });
+
+  propsSearchBarEl.hidden = false;
+  propsSearchInputEl.value = "";
+  propsSearchClearEl.hidden = true;
   elementPropsEl.hidden = false;
 }
 
@@ -1219,8 +1641,13 @@ async function loadIfc(payload: ViewerPayload): Promise<void> {
     renderStoreyBar();
   }
 
-  // Show mode bar; activate category view by default; spatial if structure found
+  // Show mode bar, search bar and measure toolbar
   treeModeBar.hidden = false;
+  measureToolbarEl.hidden = false;
+  viewPresetBarEl.hidden = false;
+  treeSearchBarEl.hidden = false;
+  treeSearchInputEl.value = "";
+  treeSearchClearEl.hidden = true;
   btnModeSpatial.disabled = spatialRoot === null;
   viewMode = spatialRoot !== null ? "spatial" : "category";
   btnModeCat.classList.toggle("active", viewMode === "category");
@@ -1298,7 +1725,7 @@ async function pollCurrentIfc(): Promise<void> {
   try {
     const res = await fetch("/current.json");
     if (!res.ok) return;
-    const data = (await res.json()) as { version: number; ifc_url: string | null };
+    const data = (await res.json()) as { version: number; ifc_url: string | null; ifc_name: string | null };
     if (data.version !== _pollVersion) {
       _pollVersion = data.version;
       if (data.ifc_url) {
@@ -1311,7 +1738,7 @@ async function pollCurrentIfc(): Promise<void> {
         setStatus("IFC source updated — loading...");
         await window.GeoIfcViewer.openReference({
           modelUrl: data.ifc_url,
-          source: data.ifc_url,
+          source: data.ifc_name ?? data.ifc_url,
           kind: "ifc_url",
         });
       } else {
@@ -1328,3 +1755,284 @@ setTimeout(() => {
   void pollCurrentIfc();
   setInterval(() => void pollCurrentIfc(), 1500);
 }, 800);
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+function _downloadBlob(content: string, filename: string, mime: string): void {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function _ifcBaseName(): string {
+  const src = sourceName.textContent ?? "ifc";
+  return src.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_") || "ifc";
+}
+
+function _spatialNodeToObj(node: SpatialNode): object {
+  return {
+    expressId: node.expressId,
+    name: node.name,
+    type: node.typeLabel,
+    totalElements: node.totalCount,
+    elements: node.elements.map((e) => ({ expressId: e.expressId, name: e.name, category: e.category })),
+    children: node.children.map(_spatialNodeToObj),
+  };
+}
+
+function exportSpatialJson(): void {
+  if (!spatialRoot) return;
+  _downloadBlob(
+    JSON.stringify(_spatialNodeToObj(spatialRoot), null, 2),
+    `${_ifcBaseName()}_spatial.json`,
+    "application/json",
+  );
+}
+
+function exportCategoriesJson(): void {
+  if (!elementsByCategory) return;
+  const obj: Record<string, object[]> = {};
+  for (const [cat, els] of elementsByCategory) {
+    obj[cat] = els.map((e) => ({ expressId: e.expressId, name: e.name }));
+  }
+  _downloadBlob(JSON.stringify(obj, null, 2), `${_ifcBaseName()}_categories.json`, "application/json");
+}
+
+function exportPropsJson(): void {
+  if (!_lastProps) return;
+  const { expressId, name, category, direct, psets } = _lastProps;
+  const obj = {
+    expressId,
+    name,
+    category,
+    attributes: Object.fromEntries(direct.map((p) => [p.key, p.value])),
+    propertySets: Object.fromEntries(psets.map((ps) => [ps.name, Object.fromEntries(ps.props.map((p) => [p.key, p.value]))])),
+  };
+  _downloadBlob(JSON.stringify(obj, null, 2), `${_ifcBaseName()}_element_${expressId}.json`, "application/json");
+}
+
+function exportPropsCsv(): void {
+  if (!_lastProps) return;
+  const { expressId, direct, psets } = _lastProps;
+  const rows: string[][] = [["pset", "key", "value"]];
+  for (const { key, value } of direct) rows.push(["Attributes", key, value]);
+  for (const ps of psets) {
+    for (const { key, value } of ps.props) rows.push([ps.name, key, value]);
+  }
+  const csv = rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  _downloadBlob(csv, `${_ifcBaseName()}_element_${expressId}.csv`, "text/csv");
+}
+
+function _openExportMenu(): void {
+  const noSpatial = !spatialRoot;
+  const noCat = !elementsByCategory || elementsByCategory.size === 0;
+  const noProps = !_lastProps;
+  (document.getElementById("export-spatial-json") as HTMLButtonElement).disabled = noSpatial;
+  (document.getElementById("export-cat-json") as HTMLButtonElement).disabled = noCat;
+  (document.getElementById("export-props-json") as HTMLButtonElement).disabled = noProps;
+  (document.getElementById("export-props-csv") as HTMLButtonElement).disabled = noProps;
+
+  const panel = document.querySelector<HTMLElement>(".viewer-panel")!;
+  const panelRect = panel.getBoundingClientRect();
+  const btnRect = btnExport.getBoundingClientRect();
+  exportMenu.style.top = `${btnRect.bottom - panelRect.top + 4}px`;
+  exportMenu.style.right = `${panelRect.right - btnRect.right}px`;
+  exportMenu.hidden = false;
+}
+
+btnExport.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (!exportMenu.hidden) { exportMenu.hidden = true; return; }
+  _openExportMenu();
+});
+
+document.addEventListener("click", () => { exportMenu.hidden = true; });
+exportMenu.addEventListener("click", (e) => e.stopPropagation());
+
+document.getElementById("export-spatial-json")!.addEventListener("click", () => { exportSpatialJson(); exportMenu.hidden = true; });
+document.getElementById("export-cat-json")!.addEventListener("click", () => { exportCategoriesJson(); exportMenu.hidden = true; });
+document.getElementById("export-props-json")!.addEventListener("click", () => { exportPropsJson(); exportMenu.hidden = true; });
+document.getElementById("export-props-csv")!.addEventListener("click", () => { exportPropsCsv(); exportMenu.hidden = true; });
+
+// ── Measurement toolbar events ────────────────────────────────────────────────
+
+btnMeasureLength.addEventListener("click", () => {
+  setMeasureMode(measureMode === "length" ? "none" : "length");
+});
+
+btnMeasureArea.addEventListener("click", () => {
+  setMeasureMode(measureMode === "area" ? "none" : "area");
+});
+
+btnMeasureClear.addEventListener("click", () => {
+  clearMeasurements();
+});
+
+btnSection.addEventListener("click", () => {
+  if (sectionActive) disableSection(); else enableSection();
+});
+
+viewPresetBtns.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    snapToView(btn.dataset.view as ViewPreset);
+  });
+});
+
+btnOrtho.addEventListener("click", () => {
+  setOrthoMode(!useOrtho);
+});
+
+sectionAxisBtns.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    sectionAxis = (btn.dataset.axis as "x" | "y" | "z") ?? "y";
+    sectionAxisBtns.forEach((b) => b.classList.toggle("active", b === btn));
+    updateSectionPlane();
+  });
+});
+
+sectionSliderEl.addEventListener("input", () => {
+  sectionPosition = Number(sectionSliderEl.value);
+  updateSectionPlane();
+});
+
+sectionFlipBtn.addEventListener("click", () => {
+  sectionFlipped = !sectionFlipped;
+  updateSectionPlane();
+});
+
+sectionOffBtn.addEventListener("click", () => {
+  disableSection();
+});
+
+
+// ── Tree search ───────────────────────────────────────────────────────────────
+
+treeSearchInputEl.addEventListener("input", () => {
+  const q = treeSearchInputEl.value;
+  treeSearchClearEl.hidden = !q;
+  applyTreeFilter(q);
+});
+
+treeSearchClearEl.addEventListener("click", () => {
+  treeSearchInputEl.value = "";
+  treeSearchClearEl.hidden = true;
+  applyTreeFilter("");
+  treeSearchInputEl.focus();
+});
+
+// ── Props search ──────────────────────────────────────────────────────────────
+
+propsSearchInputEl.addEventListener("input", () => {
+  const q = propsSearchInputEl.value;
+  propsSearchClearEl.hidden = !q;
+  applyPropsFilter(q);
+});
+
+propsSearchClearEl.addEventListener("click", () => {
+  propsSearchInputEl.value = "";
+  propsSearchClearEl.hidden = true;
+  applyPropsFilter("");
+  propsSearchInputEl.focus();
+});
+
+// ── Props key-column resize ───────────────────────────────────────────────────
+
+const PROPS_KEY_STORAGE = "geoifc-prop-key-width";
+const PROPS_KEY_MIN = 60;
+const PROPS_KEY_MAX = 300;
+const PROPS_KEY_DEFAULT = 110;
+
+{
+  const saved = parseInt(localStorage.getItem(PROPS_KEY_STORAGE) ?? "", 10);
+  const w = isNaN(saved) ? PROPS_KEY_DEFAULT : Math.max(PROPS_KEY_MIN, Math.min(PROPS_KEY_MAX, saved));
+  elementPropsEl.style.setProperty("--prop-key-width", `${w}px`);
+}
+
+let _propResizing = false;
+let _propStartX = 0;
+let _propStartWidth = 0;
+let _propResizerEl: HTMLElement | null = null;
+
+elementPropsEl.addEventListener("mousedown", (e: MouseEvent) => {
+  const target = e.target as HTMLElement;
+  if (!target.classList.contains("prop-col-resizer")) return;
+  _propResizing = true;
+  _propResizerEl = target;
+  _propStartX = e.clientX;
+  _propStartWidth = parseInt(elementPropsEl.style.getPropertyValue("--prop-key-width") || String(PROPS_KEY_DEFAULT), 10);
+  target.classList.add("dragging");
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+  e.preventDefault();
+});
+
+document.addEventListener("mousemove", (e: MouseEvent) => {
+  if (!_propResizing) return;
+  const dx = e.clientX - _propStartX;
+  const newWidth = Math.max(PROPS_KEY_MIN, Math.min(PROPS_KEY_MAX, _propStartWidth + dx));
+  elementPropsEl.style.setProperty("--prop-key-width", `${newWidth}px`);
+});
+
+document.addEventListener("mouseup", () => {
+  if (!_propResizing) return;
+  _propResizing = false;
+  _propResizerEl?.classList.remove("dragging");
+  _propResizerEl = null;
+  document.body.style.cursor = "";
+  document.body.style.userSelect = "";
+  const finalWidth = parseInt(elementPropsEl.style.getPropertyValue("--prop-key-width") || String(PROPS_KEY_DEFAULT), 10);
+  localStorage.setItem(PROPS_KEY_STORAGE, String(finalWidth));
+});
+
+// ── Panel resize ──────────────────────────────────────────────────────────────
+
+const _shell = document.querySelector<HTMLElement>(".viewer-shell");
+const _resizerEl = document.getElementById("panel-resizer");
+
+if (_shell && _resizerEl) {
+  const STORAGE_KEY = "geoifc-panel-width";
+  const MIN_WIDTH = 180;
+  const MAX_WIDTH = 700;
+  const DEFAULT_WIDTH = 270;
+
+  const savedWidth = parseInt(localStorage.getItem(STORAGE_KEY) ?? "", 10);
+  const initialWidth = isNaN(savedWidth) ? DEFAULT_WIDTH : Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, savedWidth));
+  _shell.style.gridTemplateColumns = `minmax(0, 1fr) 4px ${initialWidth}px`;
+
+  let _resizing = false;
+  let _startX = 0;
+  let _startWidth = 0;
+
+  _resizerEl.addEventListener("mousedown", (e: MouseEvent) => {
+    _resizing = true;
+    _startX = e.clientX;
+    _startWidth = parseInt(_shell.style.gridTemplateColumns.split(" ").pop() ?? String(DEFAULT_WIDTH), 10);
+    _resizerEl.classList.add("dragging");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", (e: MouseEvent) => {
+    if (!_resizing) return;
+    const dx = _startX - e.clientX;
+    const newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, _startWidth + dx));
+    _shell.style.gridTemplateColumns = `minmax(0, 1fr) 4px ${newWidth}px`;
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (!_resizing) return;
+    _resizing = false;
+    _resizerEl.classList.remove("dragging");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    const finalWidth = parseInt(_shell.style.gridTemplateColumns.split(" ").pop() ?? String(DEFAULT_WIDTH), 10);
+    localStorage.setItem(STORAGE_KEY, String(finalWidth));
+  });
+}

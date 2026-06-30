@@ -61,7 +61,7 @@ def add_footprint_layer(footprint: StoreyFootprint, ifc_path: str) -> str:
 
     ifc_filename = Path(ifc_path).name
     layer_name = f"IFC Floor — {footprint.storey_name} — {ifc_filename}"
-    uri = f"Polygon?crs={target_crs.authid()}"
+    uri = f"MultiPolygon?crs={target_crs.authid()}"
 
     layer = QgsVectorLayer(uri, layer_name, "memory")
     if not layer.isValid():
@@ -71,6 +71,7 @@ def add_footprint_layer(footprint: StoreyFootprint, ifc_path: str) -> str:
     provider.addAttributes([
         QgsField("storey_name", QVariant.String),
         QgsField("ifc_file", QVariant.String),
+        QgsField("ifc_url", QVariant.String),
         QgsField("ifc_crs", QVariant.String),
         QgsField("elements", QVariant.Int),
         QgsField("fallback", QVariant.Bool),
@@ -82,13 +83,15 @@ def add_footprint_layer(footprint: StoreyFootprint, ifc_path: str) -> str:
     feature.setAttributes([
         footprint.storey_name,
         ifc_filename,
-        footprint.crs_auth_id,   # original IFC CRS for traceability
+        ifc_path,               # full path so the layer is linkable via ifc_url contract
+        footprint.crs_auth_id,  # original IFC CRS for traceability
         footprint.element_count,
         footprint.used_fallback,
     ])
     provider.addFeature(feature)
     layer.updateExtents()
 
+    layer.setCustomProperty("geoifcassets_layer_type", "footprint")
     project.addMapLayer(layer)
 
     _log.info(

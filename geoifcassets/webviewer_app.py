@@ -63,6 +63,40 @@ def main() -> int:
     view.load(QUrl(url))
     view.show()
 
+    # Enable file downloads (JSON/CSV export from the viewer).
+    try:
+        from PyQt6.QtWidgets import QFileDialog as _QFD
+    except ImportError:
+        from PyQt5.QtWidgets import QFileDialog as _QFD  # type: ignore[no-redef]
+
+    def _on_download_requested(download: object) -> None:
+        import os
+
+        try:
+            suggested = download.suggestedFileName()  # type: ignore[attr-defined]
+        except AttributeError:
+            suggested = "export"
+
+        path, _ = _QFD.getSaveFileName(view, "Save export", suggested)
+        if not path:
+            download.cancel()  # type: ignore[attr-defined]
+            return
+
+        try:
+            # PyQt6 API
+            download.setDownloadDirectory(os.path.dirname(os.path.abspath(path)))  # type: ignore[attr-defined]
+            download.setDownloadFileName(os.path.basename(path))  # type: ignore[attr-defined]
+        except AttributeError:
+            # PyQt5 API
+            download.setPath(path)  # type: ignore[attr-defined]
+
+        download.accept()  # type: ignore[attr-defined]
+
+    try:
+        view.page().profile().downloadRequested.connect(_on_download_requested)
+    except Exception:
+        pass
+
     # Signal to parent that the window is ready (win_id for future embedding).
     win_id = int(view.winId())
     print(f"READY:{win_id}", flush=True)
