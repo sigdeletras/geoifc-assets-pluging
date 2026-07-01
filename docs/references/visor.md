@@ -3,9 +3,9 @@
 
 ## Arquitectura implementada
 
-El visor IFC de GeoIFC Assets es un **subproceso Python independiente** gestionado desde el proceso QGIS mediante `QProcess`. La ventana del subproceso se embebe directamente en la pestaña "IFC Viewer" del dock principal.
+El visor IFC de GeoIFC Assets es un **subproceso Python independiente** gestionado desde el proceso QGIS mediante `QProcess`. La UI 3D (`QWebEngineView`) aparece como **ventana flotante** propia del subproceso; el dock de QGIS gestiona el flujo (referencia IFC, estado, transferencias BIM→GIS) pero no aloja el canvas 3D.
 
-Las decisiones arquitectónicas que justifican este diseño están formalizadas en **ADR-008** (subproceso + SwiftShader + polling HTTP) y **ADR-009** (embedding en dock).
+Las decisiones arquitectónicas que justifican este diseño están formalizadas en **ADR-008** (subproceso + SwiftShader + polling HTTP). ADR-009 (embedding en dock) quedó descartado.
 
 ---
 
@@ -125,7 +125,7 @@ Servidor `ThreadingHTTPServer` que corre en un hilo demonio. Expone los siguient
 
 ### `IfcViewerDock` — `viewer.py`
 
-Gestiona el ciclo de vida del subproceso y la integración con el layout del dock.
+Gestiona el ciclo de vida del subproceso y muestra estado en el layout del dock.
 
 **Atributos clave:**
 
@@ -543,6 +543,6 @@ Ver especificación completa en `docs/visor_selector_plantas.md`.
 - **HU-03 (selección de elemento IFC → QGIS):** Parcialmente implementada mediante POST `/transfer`. El canal inverso está activo para transferencia de propiedades; la selección de geometría IFC → highlight en capa GIS sigue pendiente.
 - **URLs remotas:** El campo `ifc_url` con valor `http://` o `https://` muestra advertencia; el IFC no se carga. Pendiente de implementación.
 - **Latencia:** El polling introduce un retraso de hasta 1,5 s entre selección de feature y actualización del visor.
-- **Arranque inicial:** El subproceso tarda ~1-2 s en arrancar (Chromium + WASM). Durante ese tiempo el dock muestra el placeholder "Starting IFC viewer subprocess…".
+- **Arranque inicial:** El subproceso tarda ~1-2 s en arrancar (Chromium + WASM). Durante ese tiempo el dock muestra el mensaje de estado "IFC viewer subprocess starting…".
 - **Rendimiento en modelos grandes:** `buildElementIndex` hace una llamada `api.GetLine` por cada elemento con geometría. En modelos con >5.000 elementos únicos, la indexación puede añadir ~1-3 s tras la carga de geometría.
 - **Elementos sin estructura espacial:** elementos con geometría pero sin `IFCRELCONTAINEDINSPATIALSTRUCTURE` no aparecen en el árbol Spatial. Siempre están disponibles en la vista Category.

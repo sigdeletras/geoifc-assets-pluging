@@ -403,7 +403,7 @@ Cuando el uso real confirme patrones de mapeo recurrentes por clase IFC, se eval
 
 **Supersedado por ADR-008.**
 
-La decisión inicial de diseñar un puerto abstracto `IfcViewerPort` e integrar el visor mediante un `QWebEngineView` en proceso quedó invalidada tras validar que QGIS ya inicializa Chromium antes de que el plugin pueda configurar las variables de entorno necesarias para WebGL con software rendering. La arquitectura real implementada se documenta en ADR-008 (subproceso) y ADR-009 (embedding en dock).
+La decisión inicial de diseñar un puerto abstracto `IfcViewerPort` e integrar el visor mediante un `QWebEngineView` en proceso quedó invalidada tras validar que QGIS ya inicializa Chromium antes de que el plugin pueda configurar las variables de entorno necesarias para WebGL con software rendering. La arquitectura real implementada se documenta en ADR-008 (subproceso con ventana flotante).
 
 ---
 
@@ -526,15 +526,15 @@ QGIS proceso (QProcess manager)
 - No se puede usar QWebChannel (requiere el mismo proceso Qt). La comunicación debe pasar por otro mecanismo.
 - El ejecutable Python no es `sys.executable` en QGIS (que apunta al binario `qgis-bin.exe`); hay que localizar el intérprete real.
 - Latencia de arranque (~1-2 s para que Chromium inicialice).
-- El embedding de la ventana en el dock requiere trabajo adicional (ver ADR-009).
+- El visor aparece como ventana flotante independiente del dock (decisión confirmada; ver ADR-009 descartado).
 
 ---
 
 ### Alternativa C: Proceso externo independiente
 
-Lanzar un proceso Python sin gestión por QProcess (p.ej. `subprocess.Popen`), sin embedding.
+Lanzar un proceso Python sin gestión por QProcess (p.ej. `subprocess.Popen`).
 
-**Descartada** porque no permite capturar stdout para recibir el `win_id` (necesario para ADR-009) ni gestionar el ciclo de vida del proceso desde QGIS de forma limpia.
+**Descartada** porque no permite capturar stdout (`READY:`, errores de binding) ni gestionar el ciclo de vida del proceso desde QGIS de forma limpia.
 
 ---
 
@@ -692,13 +692,19 @@ El flag `setQuitOnLastWindowClosed(False)` evita que ese crash temporal provoque
 
 ## Estado
 
-Aceptado. Implementado en `geoifcassets/adapters/qgis/viewer.py` (`_embed_subprocess_window`, `_clear_embedded_window`).
+**Descartado (2026-07).** No se implementará.
+
+El visor IFC permanece como **ventana flotante** gestionada por el subproceso (`webviewer_app.py`). El dock de QGIS solo muestra metadatos de la referencia IFC, estado del subproceso y controles de flujo; la UI 3D vive en la ventana independiente.
+
+La sección siguiente conserva el análisis original como referencia histórica.
 
 ## Contexto
 
-ADR-008 establece que el visor IFC corre en un subproceso Python con su propia `QApplication`. Por defecto, la ventana `QWebEngineView` del subproceso aparece como una ventana flotante independiente. Esto es funcionalmente correcto, pero la experiencia de usuario es deficiente: la ventana puede quedar detrás de QGIS, el usuario tiene que gestionarla manualmente y no forma parte del flujo de trabajo integrado del plugin.
+ADR-008 establece que el visor IFC corre en un subproceso Python con su propia `QApplication`. Por defecto, la ventana `QWebEngineView` del subproceso aparece como una ventana flotante independiente.
 
-El objetivo es que el visor aparezca directamente dentro de la pestaña "IFC Viewer" del dock del complemento, sin ventana emergente.
+Se evaluó embeber esa ventana en la pestaña "IFC Viewer" del dock mediante `QWindow.fromWinId` + `QWidget.createWindowContainer`. Tras revisión del MVP, se confirma que **no es necesario**: la ventana flotante es suficiente y evita complejidad multiplataforma (reparenting entre procesos, foco de teclado, ciclo de vida del container).
+
+El protocolo `READY:<win_id>` se mantiene como señal de arranque correcto del subproceso; el identificador de ventana **no se usa** para embedding.
 
 ---
 
@@ -743,13 +749,13 @@ Capturar el contenido visual del subproceso y pintarlo en el dock mediante QPixm
 
 ---
 
-## Decisión
+## Decisión original (referencia histórica)
 
-Se adopta la **Alternativa B**: embedding mediante `QWidget.createWindowContainer(QWindow.fromWinId(win_id))`.
+Se había adoptado la **Alternativa B**: embedding mediante `QWidget.createWindowContainer(QWindow.fromWinId(win_id))`. Esa decisión quedó **revocada**; la alternativa vigente es la **Alternativa A** (ventana flotante).
 
 ---
 
-## Solución técnica implementada
+## Solución técnica evaluada (no implementada)
 
 ### Protocolo de embedding
 
@@ -999,7 +1005,7 @@ Aceptado. **Fase A y Fase B implementadas** en `webviewer_src/src/viewer.ts`, `w
 
 ## Contexto
 
-El visor IFC (ADR-008 + ADR-009) renderiza el modelo 3D completo pero no ofrece ningún mecanismo de inspección individual de elementos. El usuario ve la geometría pero no puede seleccionar un elemento concreto, hacer zoom sobre él ni consultar sus propiedades IFC (atributos directos ni PropertySets).
+El visor IFC (ADR-008) renderiza el modelo 3D completo pero no ofrece ningún mecanismo de inspección individual de elementos. El usuario ve la geometría pero no puede seleccionar un elemento concreto, hacer zoom sobre él ni consultar sus propiedades IFC (atributos directos ni PropertySets).
 
 El MVP requiere consulta de propiedades IFC desde el visor (HU-02 parcial) como paso previo a la transferencia de valores BIM a campos GIS (HU-04). Sin un mecanismo de selección y visualización de propiedades, esa transferencia no puede realizarse de forma guiada.
 

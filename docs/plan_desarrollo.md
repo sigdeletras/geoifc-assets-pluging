@@ -412,14 +412,14 @@ Responsable de:
 Tecnologias:
 
 * `QProcess` (gestion del subproceso Python visor)
-* `QWidget.createWindowContainer` + `QWindow.fromWinId` (embedding ventana nativa)
+* `QWebEngineView` en ventana flotante del subproceso (`webviewer_app.py`)
 * `ThreadingHTTPServer` (servidor IFC local, polling `/current.json`)
 * `web-ifc` (WASM, lectura IFC + lectura de propiedades) + `Three.js` (renderizado WebGL)
 * SwiftShader (software renderer activado via `QTWEBENGINE_CHROMIUM_FLAGS`)
 
 El visor corre en un subproceso Python separado (`webviewer_app.py`) para que
 Chromium arranque fresco y lea las flags de SwiftShader, resolviendo la
-incompatibilidad con el Chromium ya inicializado por QGIS. Ver ADR-008 y ADR-009.
+incompatibilidad con el Chromium ya inicializado por QGIS. Ver ADR-008.
 
 El arbol de elementos incluye dos vistas (Fase A y Fase B, ver ADR-010):
 
@@ -1412,8 +1412,8 @@ Sin tests de integracion ni tests con entorno QGIS real aun.
 Los ADRs del proyecto estan documentados en `docs/adrs_geoifc.md`:
 
 * ADR-001: Relacion GIS <-> IFC via campo `ifc_path` / `ifc_url`.
-* ADR-008: Visor IFC en subproceso separado con SwiftShader y polling HTTP.
-* ADR-009: Embedding de la ventana del subproceso en el dock QGIS.
+* ADR-008: Visor IFC en subproceso separado con SwiftShader y polling HTTP (ventana flotante).
+* ADR-009: Embedding en dock — descartado; no requerido para el MVP.
 * ADR-010: Fases A-B-C del visor (arbol plano, arbol espacial, transferencia BIM->GIS).
 * ADR-011: Herramientas de analisis visual — medicion, seccion transversal y vistas ortonormales.
 

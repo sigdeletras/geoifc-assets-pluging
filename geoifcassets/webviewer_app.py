@@ -122,7 +122,7 @@ def main() -> int:
     except Exception:
         pass
 
-    # Signal to parent that the window is ready (win_id for future embedding).
+    # Signal to parent that the window is ready (readiness check only).
     win_id = int(view.winId())
     print(f"READY:{win_id}", flush=True)
 
