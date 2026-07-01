@@ -16,6 +16,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+try:
+    from geoifcassets.adapters.qgis.python_runtime import find_python_executable
+except ImportError:
+    find_python_executable = None  # type: ignore[assignment,misc]
+
 
 SEP = "-" * 60
 
@@ -92,6 +97,11 @@ if not _pyqt6_web_ok and not _pyqt5_web_ok:
 # ------------------------------------------------------------------
 _header("3. Import vía subprocess (simula webviewer_app.py)")
 
+_subprocess_python = (
+    find_python_executable() if find_python_executable is not None else sys.executable
+)
+_info(f"Python subprocess : {_subprocess_python}")
+
 _test_script = (
     "import sys\n"
     "results = []\n"
@@ -109,7 +119,7 @@ _test_script = (
 )
 
 _proc = subprocess.run(
-    [sys.executable, "-c", _test_script],
+    [find_python_executable(), "-c", _test_script],
     capture_output=True,
     text=True,
     timeout=15,

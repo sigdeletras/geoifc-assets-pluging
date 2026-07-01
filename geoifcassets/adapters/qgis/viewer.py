@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from geoifcassets.adapters.qgis.i18n import tr
+from geoifcassets.adapters.qgis.python_runtime import find_python_executable
 from geoifcassets.core.models import IfcReference
 
 _log = logging.getLogger("geoifcassets")
@@ -60,65 +61,31 @@ def _ensure_swiftshader_flag() -> None:
         _log.debug("SwiftShader/GPU flags already present in %s", key)
 
 
-def _find_python_executable() -> str:
-    """Return the Python interpreter path suitable for subprocess launch.
+def iter_subprocess_stdout_lines(raw: bytes) -> list[str]:
+    """Split subprocess stdout chunks into non-empty lines."""
+    text = raw.decode("utf-8", errors="replace")
+    return [line for line in text.splitlines() if line.strip()]
 
-    In QGIS, ``sys.executable`` is the QGIS binary (qgis-bin.exe / qgis.exe),
-    not the Python interpreter. The real interpreter lives under apps/Python*/
-    at the QGIS installation root (one level above the bin/ directory).
 
-    Search order:
-      1. apps/Python*/ under qgis_bin parent (QGIS standalone installer layout)
-      2. Fixed candidates: qgis_bin/*.exe, sys.prefix/python.exe, sys.prefix/bin/python*
-      3. PATH fallback via which() — last resort; may find a system Python
-         that lacks PyQtWebEngine, so only used if everything else fails.
+def classify_subprocess_stdout_line(line: str) -> tuple[str, str]:
+    """Classify one subprocess stdout line.
+
+    Returns ``(kind, payload)`` where *kind* is one of:
+    ``binding``, ``binding_fallback``, ``binding_error``, ``ready``,
+    ``renderer_crash``, ``other``.
     """
-    from shutil import which
-
-    _log.info(
-        "sys.executable=%s  sys.prefix=%s  sys.version=%s",
-        sys.executable,
-        sys.prefix,
-        sys.version.split()[0],
-    )
-
-    qgis_bin = Path(sys.executable).parent
-    qgis_root = qgis_bin.parent  # one level up: where apps/ lives
-
-    # --- 1. apps/Python* search (most reliable for QGIS standalone Windows) ---
-    for search_root in [qgis_root, qgis_bin]:
-        apps_dir = search_root / "apps"
-        if apps_dir.is_dir():
-            for entry in sorted(apps_dir.iterdir(), reverse=True):
-                if entry.name.lower().startswith("python") and entry.is_dir():
-                    candidate = entry / "python.exe"
-                    if candidate.is_file():
-                        _log.info("Python interpreter resolved via apps/: %s", candidate)
-                        return str(candidate)
-
-    # --- 2. Fixed candidates ---
-    candidates = [
-        qgis_bin / "python3.exe",
-        qgis_bin / "python.exe",
-        Path(sys.prefix) / "python.exe",
-        Path(sys.prefix) / "bin" / "python3",
-        Path(sys.prefix) / "bin" / "python",
-    ]
-    for path in candidates:
-        exists = path.is_file()
-        _log.debug("Python candidate %s — %s", path, "found" if exists else "not found")
-        if exists:
-            _log.info("Python interpreter resolved: %s", path)
-            return str(path)
-
-    # --- 3. PATH fallback (may return a system Python without PyQtWebEngine) ---
-    fallback = which("python3") or which("python") or sys.executable
-    _log.warning(
-        "Python interpreter not found via candidates (sys.executable=%s); fallback: %s",
-        sys.executable,
-        fallback,
-    )
-    return fallback
+    stripped = line.strip()
+    if stripped.startswith("QT_BINDING:"):
+        return ("binding", stripped.split(":", 1)[1])
+    if stripped.startswith("QT_BINDING_FALLBACK:"):
+        return ("binding_fallback", stripped.split(":", 1)[1])
+    if stripped.startswith("QT_BINDING_ERROR:"):
+        return ("binding_error", stripped.split(":", 1)[1])
+    if stripped.startswith("READY:"):
+        return ("ready", stripped.split(":", 1)[1])
+    if stripped.startswith("RENDERER_CRASH:"):
+        return ("renderer_crash", stripped.split(":", 1)[1])
+    return ("other", stripped)
 
 
 def _local_path_from_reference(reference: IfcReference) -> str:
@@ -388,7 +355,7 @@ class IfcViewerDock:
         proc.readyReadStandardError.connect(self._on_proc_stderr)
         proc.finished.connect(self._on_proc_finished)
 
-        python_exe = _find_python_executable()
+        python_exe = find_python_executable()
         proc.start(python_exe, [script_path, str(self._http_server.port), viewer_url])
         self._proc = proc
 
@@ -415,27 +382,34 @@ class IfcViewerDock:
         if self._proc is None:
             return
         raw = bytes(self._proc.readAllStandardOutput())
-        line = raw.decode("utf-8", errors="replace").strip()
+        for line in iter_subprocess_stdout_lines(raw):
+            self._handle_subprocess_stdout_line(line)
+
+    def _handle_subprocess_stdout_line(self, line: str) -> None:
         _log.info("Subprocess stdout: %s", line)
         _qlog(f"Viewer subprocess: {line}")
-        if line.startswith("QT_BINDING:"):
-            binding = line.split(":", 1)[1]
-            _log.info("Subprocess loaded Qt binding: %s", binding)
-            _qlog(f"IFC viewer using {binding} WebEngine", level="Info")
-        elif line.startswith("QT_BINDING_FALLBACK:"):
+        kind, payload = classify_subprocess_stdout_line(line)
+        if kind == "binding":
+            _log.info("Subprocess loaded Qt binding: %s", payload)
+            _qlog(f"IFC viewer using {payload} WebEngine", level="Info")
+        elif kind == "binding_fallback":
             _log.warning("Subprocess Qt binding fallback: %s", line)
             _qlog(line, level="Warning")
-        elif line.startswith("QT_BINDING_ERROR:"):
+        elif kind == "binding_error":
             _log.error("Subprocess Qt binding error: %s", line)
             _qlog(line, level="Critical")
             self._status_label.setText(
                 tr("GeoIfcAssets", "IFC viewer error: QtWebEngine not available. "
                    "Install python3-pyqtwebengine via OSGeo4W Setup.")
             )
-        elif line.startswith("READY:"):
+        elif kind == "ready":
+            _log.info("Subprocess viewer ready (win_id=%s)", payload)
             self._status_label.setText(
                 tr("GeoIfcAssets", "IFC viewer window open — select a feature to load IFC.")
             )
+        elif kind == "renderer_crash":
+            _log.warning("Subprocess renderer crash: %s", payload)
+            _qlog(f"Viewer renderer crash: {payload}", level="Warning")
 
     def _on_proc_stderr(self) -> None:
         if self._proc is None:

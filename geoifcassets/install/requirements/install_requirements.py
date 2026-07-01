@@ -4,6 +4,7 @@ import re
 import subprocess
 import sys
 
+from geoifcassets.adapters.qgis.python_runtime import find_python_executable
 from qgis.PyQt import QtWidgets
 from qgis.core import QgsSettings
 
@@ -21,45 +22,8 @@ metadata_file = os.path.join(plugin_root, 'metadata.txt')
 SETTINGS_KEY_REQUIREMENTS_VERSION = "geoifcassets/requirements_installed_version"
 
 
-def _get_python_executable() -> str:
-    """Return the Python interpreter path.
-
-    On Windows, sys.executable is qgis.exe (not python.exe). Launching a
-    subprocess with qgis.exe opens a new QGIS window instead of running pip.
-    This function searches several candidate locations to find python.exe:
-      - exe's directory (qgis.exe is in bin/)
-      - parent of exe's directory (QGIS root, where apps/ lives)
-      - sys.exec_prefix (may point directly at the Python root)
-    """
-    exe = sys.executable
-    if "python" in os.path.basename(exe).lower():
-        return exe
-
-    exe_dir = os.path.dirname(exe)
-    search_roots = [exe_dir, os.path.dirname(exe_dir), sys.exec_prefix]
-
-    for root in search_roots:
-        # Direct python.exe at root level (matches exec_prefix pointing at Python dir)
-        candidate = os.path.join(root, "python.exe")
-        if os.path.isfile(candidate):
-            _log.info("_get_python_executable: resolved %s → %s", exe, candidate)
-            return candidate
-        # QGIS layout: apps/Python*/python.exe
-        apps_dir = os.path.join(root, "apps")
-        if os.path.isdir(apps_dir):
-            for entry in sorted(os.listdir(apps_dir), reverse=True):
-                if entry.lower().startswith("python"):
-                    candidate = os.path.join(apps_dir, entry, "python.exe")
-                    if os.path.isfile(candidate):
-                        _log.info("_get_python_executable: resolved %s → %s", exe, candidate)
-                        return candidate
-
-    _log.warning("_get_python_executable: could not resolve python.exe, using %s", exe)
-    return exe
-
-
 def _read_plugin_version() -> str:
-    """Lee la versión del complemento desde metadata.txt."""
+    """Read the plugin version from metadata.txt."""
     try:
         with open(metadata_file, encoding="utf-8") as file:
             match = re.search(r"^version=(.+)$", file.read(), re.MULTILINE)
@@ -70,15 +34,8 @@ def _read_plugin_version() -> str:
     return "0.0.0"
 
 
-def _requirements_already_installed() -> bool:
-    """Comprueba si los requisitos ya se instalaron para la versión actual del plugin."""
-    settings = QgsSettings()
-    stored_version = settings.value(SETTINGS_KEY_REQUIREMENTS_VERSION, "", type=str)
-    return stored_version == _read_plugin_version()
-
-
 def _mark_requirements_installed() -> None:
-    """Registra que los requisitos de la versión actual ya están instalados."""
+    """Persist that requirements for the current plugin version are installed."""
     QgsSettings().setValue(SETTINGS_KEY_REQUIREMENTS_VERSION, _read_plugin_version())
 
 
@@ -117,7 +74,7 @@ def _missing_packages() -> list[str]:
 
 
 def check_and_install_requirements():
-    python_exe = _get_python_executable()
+    python_exe = find_python_executable()
     _log.info(
         "requirements check — sys.executable=%s  python_exe=%s  sys.version=%s",
         sys.executable,
@@ -170,8 +127,13 @@ def check_and_install_requirements():
             return False
 
         try:
-            pip_file = os.path.join(path_requirements, 'get-pip.py')
-            subprocess.run([python_exe, pip_file], check=True, **_SUBPROCESS_FLAGS)
+            subprocess.run(
+                [python_exe, "-m", "ensurepip", "--user", "--default-pip"],
+                check=True,
+                capture_output=True,
+                text=True,
+                **_SUBPROCESS_FLAGS,
+            )
         except subprocess.CalledProcessError as error:
             QtWidgets.QMessageBox.warning(
                 None,
