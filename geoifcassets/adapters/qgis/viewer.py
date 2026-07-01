@@ -63,10 +63,15 @@ def _ensure_swiftshader_flag() -> None:
 def _find_python_executable() -> str:
     """Return the Python interpreter path suitable for subprocess launch.
 
-    In QGIS, ``sys.executable`` is the QGIS binary (qgis-bin.exe), not the
-    Python interpreter. Passing it to QProcess causes QGIS to treat the
-    arguments as data-source paths. We locate the real interpreter by probing
-    the QGIS bin directory and sys.prefix.
+    In QGIS, ``sys.executable`` is the QGIS binary (qgis-bin.exe / qgis.exe),
+    not the Python interpreter. The real interpreter lives under apps/Python*/
+    at the QGIS installation root (one level above the bin/ directory).
+
+    Search order:
+      1. apps/Python*/ under qgis_bin parent (QGIS standalone installer layout)
+      2. Fixed candidates: qgis_bin/*.exe, sys.prefix/python.exe, sys.prefix/bin/python*
+      3. PATH fallback via which() — last resort; may find a system Python
+         that lacks PyQtWebEngine, so only used if everything else fails.
     """
     from shutil import which
 
@@ -76,13 +81,28 @@ def _find_python_executable() -> str:
         sys.prefix,
         sys.version.split()[0],
     )
+
     qgis_bin = Path(sys.executable).parent
+    qgis_root = qgis_bin.parent  # one level up: where apps/ lives
+
+    # --- 1. apps/Python* search (most reliable for QGIS standalone Windows) ---
+    for search_root in [qgis_root, qgis_bin]:
+        apps_dir = search_root / "apps"
+        if apps_dir.is_dir():
+            for entry in sorted(apps_dir.iterdir(), reverse=True):
+                if entry.name.lower().startswith("python") and entry.is_dir():
+                    candidate = entry / "python.exe"
+                    if candidate.is_file():
+                        _log.info("Python interpreter resolved via apps/: %s", candidate)
+                        return str(candidate)
+
+    # --- 2. Fixed candidates ---
     candidates = [
-        qgis_bin / "python3.exe",           # QGIS Windows (OSGeo4W)
-        qgis_bin / "python.exe",            # QGIS Windows alt
-        Path(sys.prefix) / "python.exe",    # Windows prefix root
-        Path(sys.prefix) / "bin" / "python3",  # Linux/macOS
-        Path(sys.prefix) / "bin" / "python",   # Linux/macOS alt
+        qgis_bin / "python3.exe",
+        qgis_bin / "python.exe",
+        Path(sys.prefix) / "python.exe",
+        Path(sys.prefix) / "bin" / "python3",
+        Path(sys.prefix) / "bin" / "python",
     ]
     for path in candidates:
         exists = path.is_file()
@@ -91,6 +111,7 @@ def _find_python_executable() -> str:
             _log.info("Python interpreter resolved: %s", path)
             return str(path)
 
+    # --- 3. PATH fallback (may return a system Python without PyQtWebEngine) ---
     fallback = which("python3") or which("python") or sys.executable
     _log.warning(
         "Python interpreter not found via candidates (sys.executable=%s); fallback: %s",
@@ -349,6 +370,17 @@ class IfcViewerDock:
         qenv = QProcessEnvironment.systemEnvironment()
         for key, value in os.environ.items():
             qenv.insert(key, value)
+
+        # Pass QGIS's sys.path to the subprocess so PyQt5/PyQt6 and their
+        # WebEngine extensions are importable even when the standalone Python
+        # binary does not carry those paths by default.
+        import sys as _sys  # noqa: PLC0415
+        pythonpath_parts = [p for p in _sys.path if p]
+        existing = qenv.value("PYTHONPATH")
+        if existing:
+            pythonpath_parts.append(existing)
+        qenv.insert("PYTHONPATH", os.pathsep.join(pythonpath_parts))
+        _log.info("subprocess PYTHONPATH set (%d entries)", len(pythonpath_parts))
 
         proc = QProcess()
         proc.setProcessEnvironment(qenv)
